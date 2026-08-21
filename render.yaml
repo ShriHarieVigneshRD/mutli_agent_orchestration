@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: multi-agent-research-backend
+    env: python
+    region: oregon
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DEFAULT_MODEL
+        value: openrouter/free
+      - key: DATABASE_URL
+        sync: false
