@@ -181,7 +181,7 @@ OPENROUTER_API_KEY=sk-or-v1-your-openrouter-api-key-here
 DEFAULT_MODEL=openrouter/free
 
 # Neon PostgreSQL Database URL (or leave empty for SQLite)
-DATABASE_URL=postgresql://neondb_owner:npg_Moa2wgh5fvEN@ep-autumn-fire-azx9t9su-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://user:password@ep-your-db.neon.tech/neondb?sslmode=require
 ```
 
 Start the backend server:
