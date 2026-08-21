@@ -1,5 +1,7 @@
 # Autonomous Multi-Agent Research Intelligence System
 
+🚀 **Live Application**: [https://mutli-agent-orchestration.vercel.app/](https://mutli-agent-orchestration.vercel.app/)
+
 An advanced, publication-grade research platform built with **Custom LangGraph Orchestration**, **FastAPI**, **OpenRouter Multi-LLM Engine**, **Neon PostgreSQL**, and **React (Vite)**.
 
 The system decomposes complex research prompts into sub-tasks, coordinates specialist agents running in parallel, verifies claims against collected sources, and refines outputs using a Critic editorial reflection loop.
