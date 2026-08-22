@@ -70,11 +70,17 @@ def planner_node(state: ResearchState) -> Dict[str, Any]:
     
     system_prompt = (
         "You are the Lead Research Supervisor & Planner. Your job is to decompose a complex research question "
-        "into structured execution steps. You MUST respond with ONLY a valid JSON object with the following fields:\n"
+        "into structured execution steps and generate SHORT, OPTIMIZED, 4-8 WORD search queries for specialist agents.\n"
+        "You MUST respond with ONLY a valid JSON object with the following fields:\n"
         "{\n"
         '  "tasks": ["step 1...", "step 2...", "step 3..."],\n'
         '  "agents_required": ["researcher", "data_analyst", "news_agent"],\n'
-        '  "focus_areas": ["area 1", "area 2"]\n'
+        '  "focus_areas": ["area 1", "area 2"],\n'
+        '  "agent_prompts": {\n'
+        '     "researcher": "short 5-8 word web search query",\n'
+        '     "news_agent": "short 5-8 word recent news search query",\n'
+        '     "data_analyst": "targeted numerical metrics query"\n'
+        '  }\n'
         "}"
     )
     
@@ -100,17 +106,20 @@ def planner_node(state: ResearchState) -> Dict[str, Any]:
             agents_required = ["researcher", "data_analyst", "news_agent"]
             
         focus_areas = parsed.get("focus_areas", ["Technical Capabilities", "Market Impact", "Future Outlook"])
+        agent_prompts = parsed.get("agent_prompts", {})
         
     except Exception as e:
         logger.error(f"[Planner Node] Error: {e}")
         tasks = [f"Investigate: {query[:80]}", "Analyze key metrics", "Review recent developments"]
         agents_required = ["researcher", "data_analyst", "news_agent"]
         focus_areas = ["General Analysis"]
+        agent_prompts = {}
 
     plan: ResearchPlanDict = {
         "tasks": tasks,
         "agents_required": agents_required,
-        "focus_areas": focus_areas
+        "focus_areas": focus_areas,
+        "agent_prompts": agent_prompts
     }
     
     return {
@@ -122,7 +131,12 @@ def planner_node(state: ResearchState) -> Dict[str, Any]:
 # 2. RESEARCHER NODE
 def research_node(state: ResearchState) -> Dict[str, Any]:
     query = state["query"]
-    logger.info(f"[Research Node] Executing web search for: {query}")
+    plan = state.get("plan") or {}
+    agent_prompts = plan.get("agent_prompts") or {}
+    
+    # Use Planner's custom agent prompt if generated, otherwise fallback to query
+    search_query = agent_prompts.get("researcher") or query
+    logger.info(f"[Research Node] Executing web search using Planner query: '{search_query}'")
     
     status = "completed"
     error_msg = None
@@ -131,7 +145,7 @@ def research_node(state: ResearchState) -> Dict[str, Any]:
     summary = ""
     
     try:
-        findings = execute_web_search(query, max_results=5)
+        findings = execute_web_search(search_query, max_results=5)
         if not findings:
             status = "completed_with_no_results"
             summary = "No sufficiently relevant web findings were identified."
@@ -174,7 +188,11 @@ def research_node(state: ResearchState) -> Dict[str, Any]:
 # 3. DATA ANALYST NODE
 def data_analyst_node(state: ResearchState) -> Dict[str, Any]:
     query = state["query"]
-    logger.info(f"[Data Analyst Node] Analyzing statistics for: {query}")
+    plan = state.get("plan") or {}
+    agent_prompts = plan.get("agent_prompts") or {}
+    data_query = agent_prompts.get("data_analyst") or query
+    
+    logger.info(f"[Data Analyst Node] Analyzing statistics for Planner query: '{data_query}'")
     
     status = "completed"
     error_msg = None
@@ -185,9 +203,9 @@ def data_analyst_node(state: ResearchState) -> Dict[str, Any]:
     try:
         corpus = " ".join([f["content"] for f in state.get("research_findings", [])])
         if not corpus:
-            corpus = query
+            corpus = data_query
             
-        data_res = execute_data_analysis(query, corpus)
+        data_res = execute_data_analysis(data_query, corpus)
         
         item: FindingItem = {
             "title": data_res["title"],
@@ -224,7 +242,11 @@ def data_analyst_node(state: ResearchState) -> Dict[str, Any]:
 # 4. NEWS AGENT NODE
 def news_node(state: ResearchState) -> Dict[str, Any]:
     query = state["query"]
-    logger.info(f"[News Agent Node] Searching recent events for: {query}")
+    plan = state.get("plan") or {}
+    agent_prompts = plan.get("agent_prompts") or {}
+    news_search_query = agent_prompts.get("news_agent") or query
+    
+    logger.info(f"[News Agent Node] Searching recent events for Planner query: '{news_search_query}'")
     
     status = "completed"
     error_msg = None
@@ -233,7 +255,7 @@ def news_node(state: ResearchState) -> Dict[str, Any]:
     summary = ""
     
     try:
-        news_res = execute_news_search(query, max_results=4)
+        news_res = execute_news_search(news_search_query, max_results=4)
         if not news_res:
             status = "completed_with_no_results"
             summary = "No recent 2025/2026 news articles were identified."

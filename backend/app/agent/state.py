@@ -27,6 +27,7 @@ class ResearchPlanDict(TypedDict):
     tasks: List[str]
     agents_required: List[str]
     focus_areas: List[str]
+    agent_prompts: Optional[Dict[str, str]]
 
 class AgentStructuredOutput(TypedDict):
     status: str  # "completed", "completed_with_no_results", "failed"
