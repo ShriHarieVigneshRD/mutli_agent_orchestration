@@ -141,6 +141,8 @@ export default function HistoryPage() {
               report={selectedReport}
               criticFeedback={selectedReport?.critic_feedback || ''}
               revisionCount={selectedRun.revision_count || 0}
+              runId={selectedRun.id}
+              onReportUpdated={(updatedMd) => setSelectedReport((prev) => ({ ...(prev || {}), full_markdown: updatedMd }))}
             />
           ) : (
             <div className="glass-panel rounded-3xl p-16 border border-white/10 text-center space-y-4">

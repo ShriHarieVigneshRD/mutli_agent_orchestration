@@ -39,6 +39,29 @@ export async function getReportById(reportId) {
   return response.json();
 }
 
+export async function getReportChat(runId) {
+  const response = await fetch(`${API_BASE_URL}/api/research/${runId}/chat`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch chat history');
+  }
+  return response.json();
+}
+
+export async function sendReportChatMessage(runId, message) {
+  const response = await fetch(`${API_BASE_URL}/api/research/${runId}/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message }),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to send chat message');
+  }
+  return response.json();
+}
+
 export function subscribeToRunEvents(runId, onEvent, onError) {
   const eventSource = new EventSource(`${API_BASE_URL}/api/research/${runId}/stream`);
 

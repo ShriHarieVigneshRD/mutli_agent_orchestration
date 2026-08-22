@@ -12,13 +12,13 @@ import {
   FileText, 
   ExternalLink, 
   CheckCircle2, 
-  AlertTriangle, 
   Clock, 
-  Sparkles,
   Layers,
   ArrowRight,
-  Info
+  XCircle,
+  AlertCircle
 } from 'lucide-react';
+import ReportViewer from './ReportViewer';
 
 export default function AgentInspector({ 
   query, 
@@ -28,7 +28,10 @@ export default function AgentInspector({
   sources = [], 
   report = null, 
   criticFeedback = '',
-  revisionCount = 0
+  revisionCount = 0,
+  runId,
+  onReportUpdated,
+  onNewChatTrigger
 }) {
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -44,16 +47,54 @@ export default function AgentInspector({
     { id: 'report', label: 'Final Report', icon: FileText }
   ];
 
-  // Helper getters for node data
+  // Helper getters for node data & structured agent_outputs
   const plannerData = agentLogs.planner?.plan || null;
   const researcherData = agentLogs.researcher?.research_findings || [];
+  const researcherStatus = agentLogs.researcher?.agent_outputs?.researcher?.status || (completedNodes.includes('researcher') ? 'completed' : 'waiting');
+  const researcherError = agentLogs.researcher?.agent_outputs?.researcher?.error;
+
   const dataAnalystData = agentLogs.data_analyst?.data_findings || [];
+  const dataAnalystStatus = agentLogs.data_analyst?.agent_outputs?.data_analyst?.status || (completedNodes.includes('data_analyst') ? 'completed' : 'waiting');
+  const dataAnalystError = agentLogs.data_analyst?.agent_outputs?.data_analyst?.error;
+
   const newsData = agentLogs.news_agent?.news_findings || [];
+  const newsStatus = agentLogs.news_agent?.agent_outputs?.news_agent?.status || (completedNodes.includes('news_agent') ? 'completed' : 'waiting');
+  const newsError = agentLogs.news_agent?.agent_outputs?.news_agent?.error;
+
   const verifierEvidence = agentLogs.verifier?.verified_evidence || [];
   const unsupportedClaims = agentLogs.verifier?.unsupported_claims || [];
   const writerDraft = agentLogs.writer?.draft_report || '';
   const criticDecision = agentLogs.critic?.critic_decision || (report ? 'APPROVE' : '');
   const criticMsg = agentLogs.critic?.critic_feedback || criticFeedback || '';
+
+  const renderStatusBadge = (nodeStatus) => {
+    if (nodeStatus === 'failed') {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-400 bg-rose-950/80 px-2.5 py-1 rounded-full border border-rose-500/40">
+          <XCircle className="h-3.5 w-3.5" /> ✗ Failed
+        </span>
+      );
+    }
+    if (nodeStatus === 'completed_with_no_results') {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-950/80 px-2.5 py-1 rounded-full border border-amber-500/40">
+          <AlertCircle className="h-3.5 w-3.5" /> ✓ Completed – No Results Found
+        </span>
+      );
+    }
+    if (nodeStatus === 'completed') {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-500/40">
+          <CheckCircle2 className="h-3.5 w-3.5" /> ✓ Completed
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 bg-slate-900/80 px-2.5 py-1 rounded-full border border-white/10">
+        <Clock className="h-3.5 w-3.5 text-slate-500" /> Waiting / Pending
+      </span>
+    );
+  };
 
   return (
     <div className="glass-panel rounded-3xl border border-white/10 overflow-hidden shadow-2xl flex flex-col">
@@ -202,15 +243,30 @@ export default function AgentInspector({
         {/* RESEARCHER TAB */}
         {activeTab === 'researcher' && (
           <div className="space-y-6">
-            <div className="border-b border-white/10 pb-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
-                <Globe className="h-6 w-6 text-cyan-400" /> Web Research Agent Output
-              </h3>
-              <p className="text-sm text-slate-300">Gathered web findings with verified original source URLs</p>
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
+                  <Globe className="h-6 w-6 text-cyan-400" /> Web Research Agent Output
+                </h3>
+                <p className="text-sm text-slate-300">Gathered web findings with verified original source URLs</p>
+              </div>
+              {renderStatusBadge(researcherStatus)}
             </div>
 
+            {researcherError && (
+              <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs font-mono">
+                Error: {researcherError}
+              </div>
+            )}
+
             {researcherData.length === 0 ? (
-              <p className="text-sm text-slate-400 italic">No web findings recorded.</p>
+              <div className="p-6 text-center glass-panel rounded-2xl border border-white/10 space-y-2">
+                <p className="text-sm font-semibold text-slate-300">
+                  {researcherStatus === 'completed_with_no_results'
+                    ? '✓ Completed – No relevant web research findings were identified.'
+                    : 'No web research findings recorded for this run.'}
+                </p>
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {researcherData.map((item, i) => (
@@ -248,15 +304,26 @@ export default function AgentInspector({
         {/* DATA ANALYST TAB */}
         {activeTab === 'data_analyst' && (
           <div className="space-y-6">
-            <div className="border-b border-white/10 pb-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
-                <BarChart3 className="h-6 w-6 text-emerald-400" /> Data Analyst Output
-              </h3>
-              <p className="text-sm text-slate-300">Quantitative metrics, direct statistics, and derived assumptions</p>
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
+                  <BarChart3 className="h-6 w-6 text-emerald-400" /> Data Analyst Output
+                </h3>
+                <p className="text-sm text-slate-300">Quantitative metrics, direct statistics, and derived assumptions</p>
+              </div>
+              {renderStatusBadge(dataAnalystStatus)}
             </div>
 
+            {dataAnalystError && (
+              <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs font-mono">
+                Error: {dataAnalystError}
+              </div>
+            )}
+
             {dataAnalystData.length === 0 ? (
-              <p className="text-sm text-slate-400 italic">No quantitative metrics recorded.</p>
+              <div className="p-6 text-center glass-panel rounded-2xl border border-white/10">
+                <p className="text-sm font-semibold text-slate-300">No quantitative data metrics recorded.</p>
+              </div>
             ) : (
               <div className="space-y-4">
                 {dataAnalystData.map((item, i) => (
@@ -275,15 +342,30 @@ export default function AgentInspector({
         {/* NEWS AGENT TAB */}
         {activeTab === 'news_agent' && (
           <div className="space-y-6">
-            <div className="border-b border-white/10 pb-4">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
-                <Newspaper className="h-6 w-6 text-purple-400" /> News Agent Output
-              </h3>
-              <p className="text-sm text-slate-300">2025/2026 industry news, policy shifts, and recent developments</p>
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
+                  <Newspaper className="h-6 w-6 text-purple-400" /> News Agent Output
+                </h3>
+                <p className="text-sm text-slate-300">2025/2026 industry news, policy shifts, and recent developments</p>
+              </div>
+              {renderStatusBadge(newsStatus)}
             </div>
 
+            {newsError && (
+              <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs font-mono">
+                Error: {newsError}
+              </div>
+            )}
+
             {newsData.length === 0 ? (
-              <p className="text-sm text-slate-400 italic">No recent news items recorded.</p>
+              <div className="p-6 text-center glass-panel rounded-2xl border border-white/10 space-y-2">
+                <p className="text-sm font-semibold text-slate-300">
+                  {newsStatus === 'completed_with_no_results'
+                    ? '✓ Completed – No recent 2025/2026 news articles were identified.'
+                    : 'No recent news items recorded.'}
+                </p>
+              </div>
             ) : (
               <div className="space-y-4">
                 {newsData.map((item, i) => (
@@ -404,11 +486,14 @@ export default function AgentInspector({
 
         {/* FINAL REPORT TAB */}
         {activeTab === 'report' && report && (
-          <div className="markdown-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {typeof report === 'string' ? report : report.full_markdown}
-            </ReactMarkdown>
-          </div>
+          <ReportViewer 
+            report={report} 
+            sources={sources} 
+            criticFeedback={criticFeedback}
+            runId={runId}
+            onReportUpdated={onReportUpdated}
+            onNewChatTrigger={onNewChatTrigger}
+          />
         )}
       </div>
     </div>

@@ -18,6 +18,7 @@ async def test_workflow():
         "research_findings": [],
         "data_findings": [],
         "news_findings": [],
+        "agent_outputs": {},
         "verified_evidence": [],
         "unsupported_claims": [],
         "draft_report": "",

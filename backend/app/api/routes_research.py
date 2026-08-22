@@ -124,6 +124,30 @@ async def get_research_run(run_id: str, db: AsyncSession = Depends(get_db)):
         } if report else None
     }
 
+class ChatMessageRequest(BaseModel):
+    message: str
+
+@router.get("/{run_id}/chat")
+async def get_research_chat(run_id: str):
+    from app.services.chat_service import get_chat_history
+    messages = await get_chat_history(run_id)
+    return {"run_id": run_id, "messages": messages}
+
+@router.post("/{run_id}/chat")
+async def post_research_chat(run_id: str, payload: ChatMessageRequest):
+    if not payload.message or not payload.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+        
+    from app.services.chat_service import process_followup_chat
+    try:
+        res = await process_followup_chat(run_id, payload.message.strip())
+        return res
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        logger.exception(f"Chat processing error for run {run_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/{run_id}/stream")
 async def stream_research_events(run_id: str):
     queue = sse_manager.subscribe(run_id)

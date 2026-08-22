@@ -118,21 +118,49 @@ def research_node(state: ResearchState) -> Dict[str, Any]:
     query = state["query"]
     logger.info(f"[Research Node] Executing web search for: {query}")
     
-    findings = execute_web_search(query, max_results=4)
+    status = "completed"
+    error_msg = None
+    finding_items: List[FindingItem] = []
+    sources: List[Dict[str, Any]] = []
+    summary = ""
     
-    finding_items: List[FindingItem] = [
-        {
-            "title": f["title"],
-            "content": f["content"],
-            "url": f.get("url"),
-            "source_type": "web",
-            "timestamp": f.get("timestamp")
-        }
-        for f in findings
-    ]
-    
+    try:
+        findings = execute_web_search(query, max_results=5)
+        if not findings:
+            status = "completed_with_no_results"
+            summary = "No sufficiently relevant web findings were identified."
+        else:
+            status = "completed"
+            summary = f"Gathered {len(findings)} web research findings."
+            
+        for f in findings:
+            item: FindingItem = {
+                "title": f["title"],
+                "content": f["content"],
+                "url": f.get("url"),
+                "source_type": "web",
+                "timestamp": f.get("timestamp")
+            }
+            finding_items.append(item)
+            if f.get("url"):
+                sources.append({"title": f["title"], "url": f["url"], "source_type": "web"})
+    except Exception as e:
+        logger.error(f"[Research Node] Error executing web search: {e}")
+        status = "failed"
+        error_msg = str(e)
+        summary = f"Web research agent error: {e}"
+
+    output_payload = {
+        "status": status,
+        "summary": summary,
+        "findings": finding_items,
+        "sources": sources,
+        "error": error_msg
+    }
+
     return {
         "research_findings": finding_items,
+        "agent_outputs": {"researcher": output_payload},
         "current_node": "researcher"
     }
 
@@ -142,23 +170,47 @@ def data_analyst_node(state: ResearchState) -> Dict[str, Any]:
     query = state["query"]
     logger.info(f"[Data Analyst Node] Analyzing statistics for: {query}")
     
-    # Gather background text from research findings if available
-    corpus = " ".join([f["content"] for f in state.get("research_findings", [])])
-    if not corpus:
-        corpus = query
+    status = "completed"
+    error_msg = None
+    finding_items: List[FindingItem] = []
+    sources: List[Dict[str, Any]] = []
+    summary = ""
+    
+    try:
+        corpus = " ".join([f["content"] for f in state.get("research_findings", [])])
+        if not corpus:
+            corpus = query
+            
+        data_res = execute_data_analysis(query, corpus)
         
-    data_res = execute_data_analysis(query, corpus)
-    
-    finding_items: List[FindingItem] = [{
-        "title": data_res["title"],
-        "content": data_res["content"],
-        "url": data_res.get("url"),
-        "source_type": "data",
-        "timestamp": data_res.get("timestamp")
-    }]
-    
+        item: FindingItem = {
+            "title": data_res["title"],
+            "content": data_res["content"],
+            "url": data_res.get("url"),
+            "source_type": "data",
+            "timestamp": data_res.get("timestamp")
+        }
+        finding_items.append(item)
+        if data_res.get("url"):
+            sources.append({"title": data_res["title"], "url": data_res["url"], "source_type": "data"})
+        summary = "Completed quantitative data analysis."
+    except Exception as e:
+        logger.error(f"[Data Analyst Node] Error executing data analysis: {e}")
+        status = "failed"
+        error_msg = str(e)
+        summary = f"Data Analyst error: {e}"
+
+    output_payload = {
+        "status": status,
+        "summary": summary,
+        "findings": finding_items,
+        "sources": sources,
+        "error": error_msg
+    }
+
     return {
         "data_findings": finding_items,
+        "agent_outputs": {"data_analyst": output_payload},
         "current_node": "data_analyst"
     }
 
@@ -168,21 +220,49 @@ def news_node(state: ResearchState) -> Dict[str, Any]:
     query = state["query"]
     logger.info(f"[News Agent Node] Searching recent events for: {query}")
     
-    news_res = execute_news_search(query, max_results=3)
+    status = "completed"
+    error_msg = None
+    finding_items: List[FindingItem] = []
+    sources: List[Dict[str, Any]] = []
+    summary = ""
     
-    finding_items: List[FindingItem] = [
-        {
-            "title": n["title"],
-            "content": n["content"],
-            "url": n.get("url"),
-            "source_type": "news",
-            "timestamp": n.get("timestamp")
-        }
-        for n in news_res
-    ]
-    
+    try:
+        news_res = execute_news_search(query, max_results=4)
+        if not news_res:
+            status = "completed_with_no_results"
+            summary = "No recent 2025/2026 news articles were identified."
+        else:
+            status = "completed"
+            summary = f"Gathered {len(news_res)} recent news developments."
+            
+        for n in news_res:
+            item: FindingItem = {
+                "title": n["title"],
+                "content": n["content"],
+                "url": n.get("url"),
+                "source_type": "news",
+                "timestamp": n.get("timestamp")
+            }
+            finding_items.append(item)
+            if n.get("url"):
+                sources.append({"title": n["title"], "url": n["url"], "source_type": "news"})
+    except Exception as e:
+        logger.error(f"[News Agent Node] Error searching news: {e}")
+        status = "failed"
+        error_msg = str(e)
+        summary = f"News Agent error: {e}"
+
+    output_payload = {
+        "status": status,
+        "summary": summary,
+        "findings": finding_items,
+        "sources": sources,
+        "error": error_msg
+    }
+
     return {
         "news_findings": finding_items,
+        "agent_outputs": {"news_agent": output_payload},
         "current_node": "news_agent"
     }
 
@@ -191,20 +271,22 @@ def news_node(state: ResearchState) -> Dict[str, Any]:
 def verifier_node(state: ResearchState) -> Dict[str, Any]:
     query = state["query"]
     provider = state.get("provider", "groq")
-    logger.info(f"[Verifier Node] Validating evidence for query: {query}")
     
-    all_findings = (
-        state.get("research_findings", []) +
-        state.get("data_findings", []) +
-        state.get("news_findings", [])
+    res_findings = state.get("research_findings", [])
+    data_findings = state.get("data_findings", [])
+    news_findings = state.get("news_findings", [])
+    
+    logger.info(
+        f"[Verifier Node] Validating evidence for query: '{query}'. "
+        f"Received findings count - Research: {len(res_findings)}, Data: {len(data_findings)}, News: {len(news_findings)}"
     )
+    
+    all_findings = res_findings + data_findings + news_findings
     
     findings_str = "\n---\n".join([
         f"Source ({f['source_type'].upper()}): {f['title']}\nURL: {f.get('url') or 'N/A'}\nContent: {f['content']}"
         for f in all_findings
     ])
-    
-    llm = LLMFactory.get_model(provider=provider, temperature=0.1)
     
     system_prompt = (
         "You are the Lead Verifier & Evidence Inspector. Your role is to cross-examine claims gathered by research agents. "
@@ -251,9 +333,18 @@ def verifier_node(state: ResearchState) -> Dict[str, Any]:
                 "supporting_sources": [f.get("url") or f["title"]]
             })
 
+    output_payload = {
+        "status": "completed",
+        "verified_evidence": verified_evidence,
+        "unsupported_claims": unsupported_claims,
+        "verified_count": len(verified_evidence),
+        "unsupported_count": len(unsupported_claims)
+    }
+
     return {
         "verified_evidence": verified_evidence,
         "unsupported_claims": unsupported_claims,
+        "agent_outputs": {"verifier": output_payload},
         "current_node": "verifier"
     }
 
@@ -312,8 +403,15 @@ def writer_node(state: ResearchState) -> Dict[str, Any]:
         logger.error(f"[Writer Node] Error: {e}")
         draft_report = f"# Research Report: {query}\n\n## Executive Summary\nAnalysis generated based on verified findings.\n\n" + evidence_str
         
+    writer_payload = {
+        "status": "completed",
+        "draft_report": draft_report,
+        "revision_count": revision_count
+    }
+
     return {
         "draft_report": draft_report,
+        "agent_outputs": {"writer": writer_payload},
         "current_node": "writer"
     }
 
@@ -364,10 +462,18 @@ def critic_node(state: ResearchState) -> Dict[str, Any]:
             decision = "APPROVE"
             feedback += f" (Note: Maximum revision threshold of {max_revisions} reached; final report approved)."
 
+    critic_payload = {
+        "status": "completed",
+        "critic_decision": decision,
+        "critic_feedback": feedback,
+        "revision_count": new_revision_count
+    }
+
     res: Dict[str, Any] = {
         "critic_decision": decision,
         "critic_feedback": feedback,
         "revision_count": new_revision_count,
+        "agent_outputs": {"critic": critic_payload},
         "current_node": "critic"
     }
     

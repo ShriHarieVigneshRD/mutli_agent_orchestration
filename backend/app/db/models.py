@@ -27,6 +27,7 @@ class ResearchRun(Base):
     logs = relationship("AgentRunLog", back_populates="run", cascade="all, delete-orphan")
     sources = relationship("Source", back_populates="run", cascade="all, delete-orphan")
     report = relationship("Report", back_populates="run", uselist=False, cascade="all, delete-orphan")
+    chat_messages = relationship("ChatMessage", back_populates="run", cascade="all, delete-orphan", order_by="ChatMessage.created_at.asc()")
 
 
 class ResearchPlan(Base):
@@ -82,3 +83,15 @@ class Report(Base):
     created_at = Column(DateTime, default=get_utc_now)
 
     run = relationship("ResearchRun", back_populates="report")
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    run_id = Column(String(36), ForeignKey("research_runs.id"), nullable=False)
+    role = Column(String(20), nullable=False)  # "user" or "assistant"
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=get_utc_now)
+
+    run = relationship("ResearchRun", back_populates="chat_messages")

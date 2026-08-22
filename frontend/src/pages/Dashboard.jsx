@@ -288,6 +288,18 @@ export default function Dashboard({ currentProvider }) {
             report={reportData}
             criticFeedback={criticFeedback}
             revisionCount={revisionCount}
+            runId={activeRunId}
+            onReportUpdated={(updatedMd) => setReportData((prev) => ({ ...(prev || {}), full_markdown: updatedMd }))}
+            onNewChatTrigger={() => {
+              setQuery('');
+              setRunStatus('idle');
+              setActiveRunId(null);
+              setReportData(null);
+              setCompletedNodes([]);
+              setLogs([]);
+              setAgentLogs({});
+              if (textareaRef.current) textareaRef.current.focus();
+            }}
           />
         </div>
       )}
