@@ -88,16 +88,22 @@ def planner_node(state: ResearchState) -> Dict[str, Any]:
         parsed = parse_json_from_llm(response.content)
         
         tasks = parsed.get("tasks", [
-            f"Gather core concepts and literature on: {query}",
-            f"Analyze quantitative trends and adoption metrics for: {query}",
-            f"Investigate current 2025/2026 industry news regarding: {query}"
+            f"Gather core concepts and literature on: {query[:80]}",
+            f"Analyze quantitative trends and adoption metrics for: {query[:80]}",
+            f"Investigate current 2025/2026 industry news regarding: {query[:80]}"
         ])
-        agents_required = parsed.get("agents_required", ["researcher", "data_analyst", "news_agent"])
+        
+        ALLOWED_AGENTS = {"researcher", "data_analyst", "news_agent"}
+        raw_agents = parsed.get("agents_required", [])
+        agents_required = [a for a in raw_agents if a in ALLOWED_AGENTS]
+        if not agents_required:
+            agents_required = ["researcher", "data_analyst", "news_agent"]
+            
         focus_areas = parsed.get("focus_areas", ["Technical Capabilities", "Market Impact", "Future Outlook"])
         
     except Exception as e:
         logger.error(f"[Planner Node] Error: {e}")
-        tasks = [f"Investigate: {query}", "Analyze key metrics", "Review recent developments"]
+        tasks = [f"Investigate: {query[:80]}", "Analyze key metrics", "Review recent developments"]
         agents_required = ["researcher", "data_analyst", "news_agent"]
         focus_areas = ["General Analysis"]
 
