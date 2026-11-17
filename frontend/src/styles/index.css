@@ -1,0 +1,328 @@
+@import 'tailwindcss';
+
+/* Theme switch: <html data-theme="dark">. Set before first paint by the script in index.html. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ---------------------------------------------------------------------------------------------
+   "The research desk": paper and ink, one blue-pencil accent, red pencil for the editor.
+   Every colour in the UI comes from these tokens; see .interface-design/system.md.
+   --------------------------------------------------------------------------------------------- */
+:root {
+  --paper: #f6f4ef;
+  --sheet: #fdfcf9;
+  --raised: #ffffff;
+  --well: #efece5;
+  --ink: #1c1b19;
+  --ink-2: #45423b;
+  --ink-3: #6b675e;
+  --ink-4: #a39e93;
+  --rule: rgb(28 27 25 / 0.12);
+  --rule-strong: rgb(28 27 25 / 0.22);
+  --accent: #2b55c0;
+  --accent-ink: #ffffff;
+  --accent-soft: rgb(43 85 192 / 0.09);
+  --verified: #2f6f48;
+  --verified-soft: rgb(47 111 72 / 0.1);
+  --pencil: #b4381e;
+  --pencil-soft: rgb(180 56 30 / 0.09);
+  --caution: #94640f;
+  --caution-soft: rgb(148 100 15 / 0.11);
+  --shadow-pop: 0 0 0 1px rgb(28 27 25 / 0.06), 0 8px 24px -8px rgb(28 27 25 / 0.18);
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --paper: #121211;
+  --sheet: #1a1917;
+  --raised: #22211e;
+  --well: #0d0d0c;
+  --ink: #edeae3;
+  --ink-2: #beb9ae;
+  --ink-3: #8f8a80;
+  --ink-4: #5e5a53;
+  --rule: rgb(237 234 227 / 0.1);
+  --rule-strong: rgb(237 234 227 / 0.2);
+  --accent: #86a6f2;
+  --accent-ink: #121211;
+  --accent-soft: rgb(134 166 242 / 0.12);
+  --verified: #6cc08e;
+  --verified-soft: rgb(108 192 142 / 0.12);
+  --pencil: #f08a6e;
+  --pencil-soft: rgb(240 138 110 / 0.12);
+  --caution: #e3b55a;
+  --caution-soft: rgb(227 181 90 / 0.12);
+  --shadow-pop: 0 0 0 1px rgb(237 234 227 / 0.1);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-raised: var(--raised);
+  --color-well: var(--well);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-verified: var(--verified);
+  --color-verified-soft: var(--verified-soft);
+  --color-pencil: var(--pencil);
+  --color-pencil-soft: var(--pencil-soft);
+  --color-caution: var(--caution);
+  --color-caution-soft: var(--caution-soft);
+  --shadow-pop: var(--shadow-pop);
+}
+
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+  --font-serif: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  /* Type scale, ratio 1.25 from 14px: 12 · 14 · 16 · 18 · 22 · 28 · 36 */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+  --radius-control: 6px;
+  --radius-panel: 8px;
+  --radius-dialog: 12px;
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+    min-height: 100dvh;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.theme-switching,
+.theme-switching * {
+  transition: none !important;
+}
+
+/* The only perpetual motion in the app: the pulse on the desk that is working right now. */
+@keyframes desk-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: desk-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--well) 25%, var(--rule) 50%, var(--well) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Report typography: an editorial serif at a 68ch measure.
+   --------------------------------------------------------------------------------------------- */
+.report {
+  font-family: var(--font-serif);
+  font-size: var(--text-lg);
+  line-height: 1.65;
+  color: var(--ink);
+  max-width: 68ch;
+  font-optical-sizing: auto;
+}
+.report > :first-child {
+  margin-top: 0;
+}
+.report h1 {
+  font-size: var(--text-3xl);
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0 0 1.25rem;
+}
+.report h2 {
+  font-size: var(--text-xl);
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 2.25rem 0 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+}
+.report h3 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin: 1.75rem 0 0.5rem;
+}
+.report h4 {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  margin: 1.5rem 0 0.5rem;
+}
+.report p,
+.report ul,
+.report ol,
+.report blockquote,
+.report table,
+.report pre {
+  margin: 0 0 1rem;
+}
+.report ul,
+.report ol {
+  padding-left: 1.4rem;
+}
+.report ul {
+  list-style: disc;
+}
+.report ol {
+  list-style: decimal;
+}
+.report li {
+  margin: 0.3rem 0;
+}
+.report li::marker {
+  color: var(--ink-3);
+}
+.report strong {
+  font-weight: 600;
+}
+.report a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.report blockquote {
+  border-left: 2px solid var(--accent);
+  padding: 0.25rem 0 0.25rem 1rem;
+  color: var(--ink-2);
+  font-style: italic;
+}
+.report code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--well);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+.report pre {
+  background: var(--well);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-control);
+  overflow-x: auto;
+}
+.report pre code {
+  background: none;
+  padding: 0;
+}
+.report table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.report th,
+.report td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--rule);
+}
+.report th {
+  font-weight: 600;
+  color: var(--ink-2);
+  border-bottom-color: var(--rule-strong);
+}
+.report hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 2rem 0;
+}
+/* Compact variant for chat bubbles and agent drafts. */
+.report-compact {
+  font-size: var(--text-base);
+  max-width: none;
+}
+.report-compact h1 {
+  font-size: var(--text-xl);
+}
+.report-compact h2 {
+  font-size: var(--text-lg);
+  margin-top: 1.25rem;
+}
+
+/* Citation chips [n] inside the report: the footnote half of the routing-slip signature. */
+.cite {
+  font-family: var(--font-mono);
+  font-size: 0.7em;
+  vertical-align: 0.35em;
+  line-height: 1;
+  padding: 0.1em 0.3em;
+  margin: 0 0.05em;
+  border-radius: 3px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  text-decoration: none !important;
+  cursor: pointer;
+}
+.cite:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
