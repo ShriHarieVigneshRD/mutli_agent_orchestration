@@ -33,12 +33,16 @@ STATE = {
 
 # ---- routing / reflection loop (F9, F16)
 
+
 @pytest.mark.parametrize(
     ("decision", "count", "expected"),
     [("APPROVE", 0, END), ("REVISE", 0, "writer"), ("REVISE", 1, "writer"), ("REVISE", 2, END)],
 )
 def test_route_after_critic(decision, count, expected):
-    assert route_after_critic({"critic_decision": decision, "revision_count": count, "max_revisions": 2}) == expected
+    assert (
+        route_after_critic({"critic_decision": decision, "revision_count": count, "max_revisions": 2})
+        == expected
+    )
 
 
 def test_critic_revise_loop_runs_writer_twice_then_forces_approve(client, make_run, llm):
@@ -67,6 +71,7 @@ def test_writer_receives_critic_feedback_on_revision(client, make_run, llm, monk
 
 # ---- planner (F10)
 
+
 def test_planner_falls_back_to_default_plan_on_bad_json(llm):
     llm.replies["planner"] = "not json"
     plan = nodes.planner_node(dict(STATE))["plan"]
@@ -81,10 +86,14 @@ def test_planner_passes_agent_prompts(llm):
 
 # ---- gatherers (F11–F13)
 
+
 def test_researcher_uses_planner_query_and_maps_findings(search):
     state = dict(STATE, plan={"agent_prompts": {"researcher": "solar savings"}})
     out = nodes.research_node(state)
-    assert [f["url"] for f in out["research_findings"]] == ["https://example.org/solar", "https://example.org/savings"]
+    assert [f["url"] for f in out["research_findings"]] == [
+        "https://example.org/solar",
+        "https://example.org/savings",
+    ]
     assert out["agent_outputs"]["researcher"]["status"] == "completed"
 
 
@@ -100,7 +109,9 @@ def test_data_analysis_extracts_figures_from_text():
     assert res["source_type"] == "data"
 
 
-@pytest.mark.xfail(strict=True, reason="B3: empty search results are replaced with fabricated Reuters/Bloomberg items")
+@pytest.mark.xfail(
+    strict=True, reason="B3: empty search results are replaced with fabricated Reuters/Bloomberg items"
+)
 def test_empty_web_search_returns_nothing(search):
     search.text_results = []
     assert tools.execute_web_search("solar panel costs") == []
@@ -114,12 +125,15 @@ def test_data_analysis_never_invents_figures():
 
 # ---- keyword extraction / JSON parsing / LLM factory
 
+
 def test_short_queries_are_unchanged():
     assert tools.extract_search_keywords("solar panel costs") == "solar panel costs"
 
 
 def test_long_queries_are_shortened():
-    long_q = "Why are households adopting rooftop solar so quickly. " + "Explain the economics in detail " * 10
+    long_q = (
+        "Why are households adopting rooftop solar so quickly. " + "Explain the economics in detail " * 10
+    )
     assert tools.extract_search_keywords(long_q) == "Why are households adopting rooftop solar so quickly"
     assert len(tools.extract_search_keywords("word " * 60)) <= 90
 
@@ -149,6 +163,7 @@ def test_mock_llm_used_without_api_key():
 
 
 # ---- SSE manager (F3)
+
 
 def test_sse_broadcast_reaches_subscribers():
     async def scenario():

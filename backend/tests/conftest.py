@@ -73,7 +73,11 @@ DEFAULT_REPLIES = {
     },
     "writer": "# Solar Report\n\n## Executive Summary\nSolar costs fell 40% since 2020 [1].\n",
     "critic": {"decision": "APPROVE", "feedback": "Clear and sourced."},
-    "chat": {"chat_response": "Here is the answer.", "is_report_modified": False, "updated_report_markdown": None},
+    "chat": {
+        "chat_response": "Here is the answer.",
+        "is_report_modified": False,
+        "updated_report_markdown": None,
+    },
 }
 
 
@@ -127,10 +131,19 @@ class FakeDDGS:
 
 DEFAULT_WEB = [
     {"title": "Solar costs", "body": "Solar costs fell 40% since 2020.", "href": "https://example.org/solar"},
-    {"title": "Home savings", "body": "Households save $500 per year.", "href": "https://example.org/savings"},
+    {
+        "title": "Home savings",
+        "body": "Households save $500 per year.",
+        "href": "https://example.org/savings",
+    },
 ]
 DEFAULT_NEWS = [
-    {"title": "Plug-in solar bill", "body": "Lawmakers pass bill.", "url": "https://news.example/bill", "date": "2026-08-01"}
+    {
+        "title": "Plug-in solar bill",
+        "body": "Lawmakers pass bill.",
+        "url": "https://news.example/bill",
+        "date": "2026-08-01",
+    }
 ]
 
 

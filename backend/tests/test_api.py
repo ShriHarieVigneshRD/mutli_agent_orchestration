@@ -13,7 +13,13 @@ def test_create_run_executes_whole_pipeline(client, make_run, llm):
     # The planner's unknown agent ("hacker") is filtered out.
     assert run["plan"]["agents_required"] == ["researcher", "data_analyst", "news_agent"]
     assert {log["agent_name"] for log in run["logs"]} == {
-        "planner", "researcher", "data_analyst", "news_agent", "verifier", "writer", "critic",
+        "planner",
+        "researcher",
+        "data_analyst",
+        "news_agent",
+        "verifier",
+        "writer",
+        "critic",
     }
     assert run["report"]["full_markdown"].startswith("# Solar Report")
     assert run["report"]["critic_feedback"] == "Clear and sourced."
@@ -67,7 +73,11 @@ def test_chat_answers_and_persists_history(client, make_run, llm):
     run_id = make_run()
     res = client.post(f"/api/research/{run_id}/chat", json={"message": "Summarise it"})
     assert res.status_code == 200
-    assert res.json() == {"chat_response": "Here is the answer.", "is_report_modified": False, "updated_report_markdown": None}
+    assert res.json() == {
+        "chat_response": "Here is the answer.",
+        "is_report_modified": False,
+        "updated_report_markdown": None,
+    }
     messages = client.get(f"/api/research/{run_id}/chat").json()["messages"]
     assert [(m["role"], m["content"]) for m in messages] == [
         ("user", "Summarise it"),
@@ -78,7 +88,11 @@ def test_chat_answers_and_persists_history(client, make_run, llm):
 def test_chat_can_edit_the_report(client, make_run, llm):
     run_id = make_run()
     new_md = "# Solar Report v2\n\n" + "Updated executive summary with more risk detail. " * 5
-    llm.replies["chat"] = {"chat_response": "Done.", "is_report_modified": True, "updated_report_markdown": new_md}
+    llm.replies["chat"] = {
+        "chat_response": "Done.",
+        "is_report_modified": True,
+        "updated_report_markdown": new_md,
+    }
     res = client.post(f"/api/research/{run_id}/chat", json={"message": "Add risks"}).json()
     assert res["is_report_modified"] is True
     assert client.get(f"/api/research/{run_id}").json()["report"]["full_markdown"] == new_md
@@ -86,9 +100,15 @@ def test_chat_can_edit_the_report(client, make_run, llm):
 
 def test_chat_ignores_tiny_report_edits(client, make_run, llm):
     run_id = make_run()
-    llm.replies["chat"] = {"chat_response": "Done.", "is_report_modified": True, "updated_report_markdown": "tiny"}
+    llm.replies["chat"] = {
+        "chat_response": "Done.",
+        "is_report_modified": True,
+        "updated_report_markdown": "tiny",
+    }
     client.post(f"/api/research/{run_id}/chat", json={"message": "Shorten"})
-    assert client.get(f"/api/research/{run_id}").json()["report"]["full_markdown"].startswith("# Solar Report")
+    assert (
+        client.get(f"/api/research/{run_id}").json()["report"]["full_markdown"].startswith("# Solar Report")
+    )
 
 
 def test_chat_validation(client, make_run):
@@ -105,6 +125,7 @@ def test_failed_llm_still_produces_a_run_record(client, make_run, llm):
 
 
 # ---- Known bugs (ANALYSIS.md §7). strict xfail: fixing the bug turns these into regression tests.
+
 
 @pytest.mark.xfail(strict=True, reason="B1: /health reads settings.LLM_PROVIDER which does not exist")
 def test_health(client):

@@ -1,16 +1,18 @@
-import json
 import logging
-from typing import Dict, Any, List
-from sqlalchemy import select
-from langchain_core.messages import SystemMessage, HumanMessage
+from typing import Any
 
+from langchain_core.messages import HumanMessage, SystemMessage
+from sqlalchemy import select
+
+from app.agent import prompts
+from app.agent.llm import extract_text, invoke_llm_with_fallback, parse_json_from_llm
 from app.db.database import AsyncSessionLocal
-from app.db.models import ResearchRun, Report, Source, ChatMessage
-from app.agent.nodes import invoke_llm_with_fallback, parse_json_from_llm, extract_text
+from app.db.models import ChatMessage, Report, ResearchRun, Source
 
 logger = logging.getLogger("ChatService")
 
-async def get_chat_history(run_id: str) -> List[Dict[str, Any]]:
+
+async def get_chat_history(run_id: str) -> list[dict[str, Any]]:
     async with AsyncSessionLocal() as session:
         stmt = select(ChatMessage).where(ChatMessage.run_id == run_id).order_by(ChatMessage.created_at.asc())
         res = await session.execute(stmt)
@@ -20,12 +22,13 @@ async def get_chat_history(run_id: str) -> List[Dict[str, Any]]:
                 "id": m.id,
                 "role": m.role,
                 "content": m.content,
-                "created_at": m.created_at.isoformat() if m.created_at else None
+                "created_at": m.created_at.isoformat() if m.created_at else None,
             }
             for m in messages
         ]
 
-async def process_followup_chat(run_id: str, user_message: str) -> Dict[str, Any]:
+
+async def process_followup_chat(run_id: str, user_message: str) -> dict[str, Any]:
     logger.info(f"[Chat Service] Processing follow-up for run {run_id}: '{user_message[:60]}...'")
 
     async with AsyncSessionLocal() as session:
@@ -41,9 +44,13 @@ async def process_followup_chat(run_id: str, user_message: str) -> Dict[str, Any
         sources_stmt = select(Source).where(Source.run_id == run_id)
         sources_res = await session.execute(sources_stmt)
         sources = sources_res.scalars().all()
-        sources_str = "\n".join([f"- [{i+1}] {s.title}: {s.snippet} (URL: {s.url})" for i, s in enumerate(sources)])
+        sources_str = "\n".join(
+            [f"- [{i + 1}] {s.title}: {s.snippet} (URL: {s.url})" for i, s in enumerate(sources)]
+        )
 
-        history_stmt = select(ChatMessage).where(ChatMessage.run_id == run_id).order_by(ChatMessage.created_at.asc())
+        history_stmt = (
+            select(ChatMessage).where(ChatMessage.run_id == run_id).order_by(ChatMessage.created_at.asc())
+        )
         history_res = await session.execute(history_stmt)
         chat_history = history_res.scalars().all()
 
@@ -57,20 +64,6 @@ async def process_followup_chat(run_id: str, user_message: str) -> Dict[str, Any
 
     provider = run_record.provider or "openrouter/free"
 
-    system_prompt = (
-        "You are an expert AI Research Assistant. You are conversing with a user about a synthesized research report.\n"
-        "Your role is to:\n"
-        "1. Answer follow-up questions accurately using the original research query, final report, and verified sources as primary context.\n"
-        "2. REPORT MODIFICATIONS: If the user asks to modify, rewrite, expand, edit, or update any part of the report "
-        "(e.g., 'Modify section 2 to emphasize cost risks', 'Add a bullet to executive summary'), YOU MUST update the full markdown report.\n\n"
-        "You MUST respond with ONLY a valid JSON object with the following schema:\n"
-        "{\n"
-        '  "chat_response": "Your helpful response to the user in clean Markdown format.",\n'
-        '  "is_report_modified": true or false,\n'
-        '  "updated_report_markdown": "Full updated markdown report if modified, or null if unchanged."\n'
-        "}"
-    )
-
     context_prompt = (
         f"Original Research Question: {run_record.query}\n\n"
         f"Current Final Report:\n{report_md}\n\n"
@@ -79,10 +72,7 @@ async def process_followup_chat(run_id: str, user_message: str) -> Dict[str, Any
         f"User Follow-up Message: {user_message}"
     )
 
-    messages = [
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=context_prompt)
-    ]
+    messages = [SystemMessage(content=prompts.CHAT_SYSTEM), HumanMessage(content=context_prompt)]
 
     try:
         llm_response = invoke_llm_with_fallback(provider, messages, temperature=0.2)
@@ -120,5 +110,5 @@ async def process_followup_chat(run_id: str, user_message: str) -> Dict[str, Any
     return {
         "chat_response": chat_response,
         "is_report_modified": is_report_modified,
-        "updated_report_markdown": updated_report_md if is_report_modified else None
+        "updated_report_markdown": updated_report_md if is_report_modified else None,
     }

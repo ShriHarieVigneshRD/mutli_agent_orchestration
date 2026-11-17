@@ -1,17 +1,20 @@
 import logging
-from langgraph.graph import StateGraph, END
-from app.agent.state import ResearchState
+
+from langgraph.graph import END, StateGraph
+
 from app.agent.nodes import (
-    planner_node,
-    research_node,
+    critic_node,
     data_analyst_node,
     news_node,
+    planner_node,
+    research_node,
     verifier_node,
     writer_node,
-    critic_node
 )
+from app.agent.state import ResearchState
 
 logger = logging.getLogger("LangGraphWorkflow")
+
 
 def route_after_critic(state: ResearchState) -> str:
     """Conditional routing function based on Critic decision and revision count."""
@@ -22,9 +25,10 @@ def route_after_critic(state: ResearchState) -> str:
     if decision == "REVISE" and revision_count < max_revisions:
         logger.info(f"Routing back to 'writer' node for revision #{revision_count}")
         return "writer"
-    
+
     logger.info("Critic decision approved or max revisions reached. Finalizing report workflow.")
     return END
+
 
 def create_research_graph():
     """Builds and compiles the custom LangGraph StateGraph for multi-agent research intelligence."""
@@ -57,16 +61,10 @@ def create_research_graph():
     workflow.add_edge("writer", "critic")
 
     # 6. Add conditional edge from critic (reflection loop vs termination)
-    workflow.add_conditional_edges(
-        "critic",
-        route_after_critic,
-        {
-            "writer": "writer",
-            END: END
-        }
-    )
+    workflow.add_conditional_edges("critic", route_after_critic, {"writer": "writer", END: END})
 
     app = workflow.compile()
     return app
+
 
 research_graph = create_research_graph()

@@ -1,8 +1,7 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "Multi-agent research API: LangGraph pipeline, SSE progress, report chat"
 requires-python = ">=3.11"
 dependencies = [
     "aiosqlite>=0.22.1",
@@ -10,10 +9,7 @@ dependencies = [
     "duckduckgo-search>=8.1.1",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
-    "langchain>=1.3.16",
     "langchain-core>=1.6.0",
-    "langchain-google-genai>=4.3.5",
-    "langchain-groq>=1.1.3",
     "langchain-openai>=1.6.0",
     "langgraph>=1.2.11",
     "pydantic>=2.13.4",
@@ -37,3 +33,18 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning:anyio.*", "ignore:.*CallSpec2.*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008", "E501"]  # Depends()/Query() defaults are idiomatic; the formatter owns line length
+
+[tool.pyright]
+include = ["app"]
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"

@@ -1,62 +1,69 @@
 import operator
-from typing import TypedDict, List, Dict, Any, Optional, Annotated
+from typing import Annotated, Any, TypedDict
+
 
 def reduce_latest(a: Any, b: Any) -> Any:
     return b
 
-def reduce_dict_update(a: Dict[str, Any], b: Dict[str, Any]) -> Dict[str, Any]:
+
+def reduce_dict_update(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     res = dict(a or {})
     res.update(b or {})
     return res
 
+
 class FindingItem(TypedDict):
     title: str
     content: str
-    url: Optional[str]
+    url: str | None
     source_type: str  # web, data, news
-    timestamp: Optional[str]
+    timestamp: str | None
+
 
 class VerifiedClaim(TypedDict):
     claim: str
     is_verified: bool
     confidence_score: float
     reasoning: str
-    supporting_sources: List[str]
+    supporting_sources: list[str]
+
 
 class ResearchPlanDict(TypedDict):
-    tasks: List[str]
-    agents_required: List[str]
-    focus_areas: List[str]
-    agent_prompts: Optional[Dict[str, str]]
+    tasks: list[str]
+    agents_required: list[str]
+    focus_areas: list[str]
+    agent_prompts: dict[str, str] | None
+
 
 class AgentStructuredOutput(TypedDict):
     status: str  # "completed", "completed_with_no_results", "failed"
-    summary: Optional[str]
-    findings: List[FindingItem]
-    sources: List[Dict[str, Any]]
-    error: Optional[str]
+    summary: str | None
+    findings: list[FindingItem]
+    sources: list[dict[str, Any]]
+    error: str | None
+
 
 class ResearchState(TypedDict):
     query: str
     provider: str
     run_id: str
-    
-    plan: Optional[ResearchPlanDict]
-    research_findings: Annotated[List[FindingItem], operator.add]
-    data_findings: Annotated[List[FindingItem], operator.add]
-    news_findings: Annotated[List[FindingItem], operator.add]
-    
-    agent_outputs: Annotated[Dict[str, Any], reduce_dict_update]
-    
-    verified_evidence: List[VerifiedClaim]
-    unsupported_claims: List[str]
-    
+
+    plan: ResearchPlanDict | None
+    research_findings: Annotated[list[FindingItem], operator.add]
+    data_findings: Annotated[list[FindingItem], operator.add]
+    news_findings: Annotated[list[FindingItem], operator.add]
+
+    agent_outputs: Annotated[dict[str, Any], reduce_dict_update]
+
+    verified_evidence: list[VerifiedClaim]
+    unsupported_claims: list[str]
+
     draft_report: str
     critic_decision: str  # "APPROVE" or "REVISE"
     critic_feedback: str
     revision_count: int
     max_revisions: int
-    
+
     final_report: str
     current_node: Annotated[str, reduce_latest]
-    error: Optional[str]
+    error: str | None
