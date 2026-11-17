@@ -20,3 +20,8 @@ frontend/dist/
 # IDEs
 .vscode/
 .idea/
+
+# Test artefacts
+.coverage
+htmlcov/
+.pytest_cache/

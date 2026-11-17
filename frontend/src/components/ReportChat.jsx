@@ -1,9 +1,8 @@
 import { FileCheck2, Loader2, MessageSquare, Send } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { getReportChat, sendReportChatMessage } from '../lib/api';
 import { shortModel } from '../lib/format';
+import { Markdown } from './Markdown';
 import { Button } from './ui/Button';
 import { Panel, PanelHeader } from './ui/Panel';
 import { ErrorNotice } from './ui/States';
@@ -114,7 +113,7 @@ export default function ReportChat({ runId, onReportUpdated }) {
           ) : (
             <div key={m.id} className="max-w-[92%]">
               <div className="report report-compact text-ink">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+                <Markdown>{m.content}</Markdown>
               </div>
               {m.model && <p className="mt-1 font-mono text-xs text-ink-4">{shortModel(m.model)}</p>}
             </div>

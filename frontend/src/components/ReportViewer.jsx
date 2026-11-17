@@ -1,8 +1,7 @@
 import { Check, Copy, Download, ExternalLink, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { hostname, linkCitations } from '../lib/format';
+import { Markdown } from './Markdown';
 import { Button } from './ui/Button';
 import { Panel } from './ui/Panel';
 import { EmptyState } from './ui/States';
@@ -109,36 +108,35 @@ export default function ReportViewer({ report, sources = [], onUndo, undoBusy = 
       >
         {tab === 'report' && (
           <article className="report mx-auto">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
+            <Markdown
               components={{
-                a: ({ href = '', children, ...props }) => {
+                a: ({ href = '', children }) => {
                   const n = href.match(/^#source-(\d+)$/)?.[1];
-                  if (n) {
+                  if (!n) {
                     return (
-                      <a
-                        href={href}
-                        className="cite"
-                        aria-label={`Source ${n}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          cite(Number(n));
-                        }}
-                      >
-                        {n}
+                      <a href={href} target="_blank" rel="noopener noreferrer">
+                        {children}
                       </a>
                     );
                   }
                   return (
-                    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-                      {children}
+                    <a
+                      href={href}
+                      className="cite"
+                      aria-label={`Source ${n}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        cite(Number(n));
+                      }}
+                    >
+                      {n}
                     </a>
                   );
                 },
               }}
             >
               {linkCitations(markdown)}
-            </ReactMarkdown>
+            </Markdown>
           </article>
         )}
 

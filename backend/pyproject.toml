@@ -8,13 +8,11 @@ dependencies = [
     "asyncpg>=0.31.0",
     "ddgs>=9.16.1",
     "fastapi>=0.141.1",
-    "httpx>=0.28.1",
     "langchain-core>=1.6.0",
     "langchain-openai>=1.6.0",
     "langgraph>=1.2.11",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.15.0",
-    "python-dotenv>=1.2.3",
     "sqlalchemy>=2.0.52",
     "sse-starlette>=3.4.8",
     "tavily-python>=0.7.27",
@@ -23,6 +21,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pyright>=1.1.414",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
@@ -48,3 +47,7 @@ include = ["app"]
 typeCheckingMode = "basic"
 venvPath = "."
 venv = ".venv"
+
+[tool.coverage.run]
+source = ["app"]
+concurrency = ["thread", "greenlet"]

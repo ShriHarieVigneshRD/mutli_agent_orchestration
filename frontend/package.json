@@ -11,7 +11,9 @@
     "test": "node scripts/vitest.mjs run",
     "test:watch": "node scripts/vitest.mjs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:e2e": "playwright test",
+    "test:coverage": "node scripts/vitest.mjs run --coverage"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

@@ -1,8 +1,7 @@
 import { CircleCheck, CircleDashed, ExternalLink, Inbox } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { AGENTS, AGENT_BY_ID, KIND_LABELS } from '../lib/agents';
 import { hostname, shortModel } from '../lib/format';
+import { Markdown } from './Markdown';
 import { Badge, StatusBadge } from './ui/Badge';
 import { Panel } from './ui/Panel';
 import { EmptyState, ErrorNotice, Skeleton } from './ui/States';
@@ -41,7 +40,7 @@ function FindingList({ items, emptyText }) {
           </p>
           {f.content && (
             <div className="report report-compact mt-1 text-sm text-ink-2 [&_p]:mb-1 [&_ul]:mb-0">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{f.content}</ReactMarkdown>
+              <Markdown>{f.content}</Markdown>
             </div>
           )}
         </li>
@@ -187,7 +186,7 @@ function Body({ agentId, node }) {
     case 'writer':
       return d.draft_report ? (
         <div className="report report-compact">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{d.draft_report}</ReactMarkdown>
+          <Markdown>{d.draft_report}</Markdown>
         </div>
       ) : null;
     case 'critic': {

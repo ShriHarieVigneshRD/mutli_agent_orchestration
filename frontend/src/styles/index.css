@@ -171,7 +171,8 @@
 }
 
 /* ---------------------------------------------------------------------------------------------
-   Report typography: an editorial serif at a 68ch measure.
+   Report typography: an editorial serif at a 68ch measure. Headings come from components/Markdown.jsx,
+   shifted one level down (.rh1 renders as an h2), so they are styled by class.
    --------------------------------------------------------------------------------------------- */
 .report {
   font-family: var(--font-serif);
@@ -184,14 +185,14 @@
 .report > :first-child {
   margin-top: 0;
 }
-.report h1 {
+.report .rh1 {
   font-size: var(--text-3xl);
   line-height: 1.15;
   font-weight: 600;
   letter-spacing: -0.015em;
   margin: 0 0 1.25rem;
 }
-.report h2 {
+.report .rh2 {
   font-size: var(--text-xl);
   line-height: 1.3;
   font-weight: 600;
@@ -200,12 +201,12 @@
   padding-top: 1rem;
   border-top: 1px solid var(--rule);
 }
-.report h3 {
+.report .rh3 {
   font-size: var(--text-lg);
   font-weight: 600;
   margin: 1.75rem 0 0.5rem;
 }
-.report h4 {
+.report .rh4 {
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   font-weight: 600;
@@ -300,10 +301,10 @@
   font-size: var(--text-base);
   max-width: none;
 }
-.report-compact h1 {
+.report-compact .rh1 {
   font-size: var(--text-xl);
 }
-.report-compact h2 {
+.report-compact .rh2 {
   font-size: var(--text-lg);
   margin-top: 1.25rem;
 }

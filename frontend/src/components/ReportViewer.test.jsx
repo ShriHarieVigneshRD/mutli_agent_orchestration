@@ -24,7 +24,7 @@ describe('ReportViewer', () => {
     Object.assign(navigator, { clipboard: { writeText } });
     render(<ReportViewer report={REPORT} sources={SOURCES} />);
 
-    expect(screen.getByRole('heading', { name: 'Solar Report' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Solar Report' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Copy report/ }));
     expect(writeText).toHaveBeenCalledWith(REPORT.full_markdown);
     expect(await screen.findByText('Copied')).toBeInTheDocument();
