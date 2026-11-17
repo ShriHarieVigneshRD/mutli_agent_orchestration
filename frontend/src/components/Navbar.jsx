@@ -8,7 +8,7 @@ const OPENROUTER_MODELS = [
   { id: 'deepseek/deepseek-r1:free', name: '🧠 DeepSeek R1 (Free)' },
   { id: 'google/gemini-2.0-flash-exp:free', name: '⚡ Gemini 2.0 Flash (Free)' },
   { id: 'qwen/qwen-2.5-72b-instruct:free', name: '💻 Qwen 2.5 72B (Free)' },
-  { id: 'mistralai/mistral-7b-instruct:free', name: '🔷 Mistral 7B (Free)' }
+  { id: 'mistralai/mistral-7b-instruct:free', name: '🔷 Mistral 7B (Free)' },
 ];
 
 export default function Navbar({ currentProvider, setProvider }) {

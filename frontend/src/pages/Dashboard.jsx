@@ -1,26 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Sparkles, 
-  Play, 
-  Loader2, 
-  Compass, 
-  Zap, 
+import {
+  Sparkles,
+  Play,
+  Loader2,
+  Compass,
+  Zap,
   AlertCircle,
   ChevronDown,
   ChevronUp,
   Activity,
-  Layers
+  Layers,
 } from 'lucide-react';
 
 import WorkflowGraph from '../components/WorkflowGraph';
 import EventStreamLog from '../components/EventStreamLog';
 import AgentInspector from '../components/AgentInspector';
-import { createResearchRun, getResearchRun, subscribeToRunEvents } from '../services/api';
+import { createResearchRun, getResearchRun, subscribeToRunEvents } from '../lib/api';
 
 const EXAMPLE_PROMPTS = [
-  "Analyze how AI coding agents may impact junior software engineering jobs over the next 3–5 years.",
-  "Evaluate the market potential and technical hurdles of Quantum Computing in Cryptography.",
-  "Investigate current 2025/2026 trends in Autonomous Vehicle Regulation & AI Safety Standards."
+  'Analyze how AI coding agents may impact junior software engineering jobs over the next 3–5 years.',
+  'Evaluate the market potential and technical hurdles of Quantum Computing in Cryptography.',
+  'Investigate current 2025/2026 trends in Autonomous Vehicle Regulation & AI Safety Standards.',
 ];
 
 export default function Dashboard({ currentProvider }) {
@@ -67,11 +67,11 @@ export default function Dashboard({ currentProvider }) {
           const nodeName = event.replace('_completed', '');
           setActiveNode(null);
           setCompletedNodes((prev) => [...new Set([...prev, nodeName])]);
-          
+
           if (data?.details) {
             setAgentLogs((prev) => ({
               ...prev,
-              [nodeName]: data.details
+              [nodeName]: data.details,
             }));
           }
         } else if (event && event.endsWith('_started')) {
@@ -98,7 +98,7 @@ export default function Dashboard({ currentProvider }) {
       },
       (err) => {
         console.error('SSE Error:', err);
-      }
+      },
     );
 
     return () => {
@@ -117,7 +117,7 @@ export default function Dashboard({ currentProvider }) {
       }
       if (data.logs) {
         const map = {};
-        data.logs.forEach(l => {
+        data.logs.forEach((l) => {
           if (l.details) map[l.agent_name] = l.details;
         });
         setAgentLogs(map);
@@ -170,7 +170,9 @@ export default function Dashboard({ currentProvider }) {
             </span>
           </h1>
           <p className="text-base sm:text-lg text-slate-300 leading-relaxed font-normal">
-            Enter a complex research prompt. Supervisor Planner decomposes the question into specialized tasks, coordinates Researcher, Data Analyst, and News agents in parallel, verifies claims, and refines reports via Critic reflection loops.
+            Enter a complex research prompt. Supervisor Planner decomposes the question into specialized
+            tasks, coordinates Researcher, Data Analyst, and News agents in parallel, verifies claims, and
+            refines reports via Critic reflection loops.
           </p>
         </div>
 
@@ -188,7 +190,8 @@ export default function Dashboard({ currentProvider }) {
 
             <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-3">
               <span className="text-xs sm:text-sm text-slate-400 flex items-center gap-2 font-medium">
-                <Sparkles className="h-4 w-4 text-cyan-400" /> Powered by LangGraph & OpenRouter Multi-LLM Engine
+                <Sparkles className="h-4 w-4 text-cyan-400" /> Powered by LangGraph & OpenRouter Multi-LLM
+                Engine
               </span>
 
               <button
@@ -289,7 +292,9 @@ export default function Dashboard({ currentProvider }) {
             criticFeedback={criticFeedback}
             revisionCount={revisionCount}
             runId={activeRunId}
-            onReportUpdated={(updatedMd) => setReportData((prev) => ({ ...(prev || {}), full_markdown: updatedMd }))}
+            onReportUpdated={(updatedMd) =>
+              setReportData((prev) => ({ ...(prev || {}), full_markdown: updatedMd }))
+            }
             onNewChatTrigger={() => {
               setQuery('');
               setRunStatus('idle');

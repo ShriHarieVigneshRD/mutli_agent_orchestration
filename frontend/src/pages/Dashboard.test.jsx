@@ -2,9 +2,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Dashboard from './Dashboard';
-import * as api from '../services/api';
+import * as api from '../lib/api';
 
-vi.mock('../services/api', () => ({
+vi.mock('../lib/api', () => ({
   createResearchRun: vi.fn(),
   getResearchRun: vi.fn(),
   subscribeToRunEvents: vi.fn(),
@@ -16,8 +16,15 @@ const RUN = {
   id: 'r1',
   query: 'Solar costs',
   status: 'completed',
-  sources: [{ title: 'Solar costs', url: 'https://example.org/solar', snippet: 'fell 40%', source_type: 'web' }],
-  logs: [{ agent_name: 'planner', details: { plan: { tasks: ['Find cost data'], agents_required: [], focus_areas: [] } } }],
+  sources: [
+    { title: 'Solar costs', url: 'https://example.org/solar', snippet: 'fell 40%', source_type: 'web' },
+  ],
+  logs: [
+    {
+      agent_name: 'planner',
+      details: { plan: { tasks: ['Find cost data'], agents_required: [], focus_areas: [] } },
+    },
+  ],
   report: { id: 'rep1', full_markdown: '# Solar Report\n\nBody', critic_feedback: 'Good' },
 };
 
@@ -47,7 +54,9 @@ describe('Dashboard research flow', () => {
     await waitFor(() => expect(api.createResearchRun).toHaveBeenCalledWith('Solar costs', 'openrouter/free'));
     await waitFor(() => expect(api.subscribeToRunEvents).toHaveBeenCalled());
 
-    act(() => emit({ event: 'planner_completed', data: { details: { plan: { tasks: ['Find cost data'] } } } }));
+    act(() =>
+      emit({ event: 'planner_completed', data: { details: { plan: { tasks: ['Find cost data'] } } } }),
+    );
     act(() => emit({ event: 'research_completed', data: { status: 'completed' } }));
     await waitFor(() => expect(api.getResearchRun).toHaveBeenCalledWith('r1'));
 

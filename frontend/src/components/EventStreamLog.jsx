@@ -25,7 +25,10 @@ export default function EventStreamLog({ logs = [] }) {
             const isFailed = log.event?.includes('failed');
 
             return (
-              <div key={index} className="flex items-start gap-3 bg-slate-900/80 rounded-2xl p-3.5 border border-white/10 shadow-sm">
+              <div
+                key={index}
+                className="flex items-start gap-3 bg-slate-900/80 rounded-2xl p-3.5 border border-white/10 shadow-sm"
+              >
                 <span className="text-xs text-slate-400 shrink-0 font-mono mt-0.5">
                   {log.timestamp || new Date().toLocaleTimeString()}
                 </span>

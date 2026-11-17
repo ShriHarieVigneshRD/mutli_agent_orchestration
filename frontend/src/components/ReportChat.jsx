@@ -1,25 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { 
-  MessageSquare, 
-  Send, 
-  Loader2, 
-  Bot, 
-  User, 
-  Sparkles, 
-  PlusCircle, 
+import {
+  MessageSquare,
+  Send,
+  Loader2,
+  Bot,
+  User,
+  Sparkles,
+  PlusCircle,
   FileEdit,
-  AlertCircle 
+  AlertCircle,
 } from 'lucide-react';
-import { getReportChat, sendReportChatMessage } from '../services/api';
+import { getReportChat, sendReportChatMessage } from '../lib/api';
 
 const PRESET_PROMPTS = [
-  "Explain the final recommendation in simpler terms.",
-  "Compare the key options in more detail.",
-  "Modify the executive summary to highlight key risks.",
-  "What are the biggest uncertainties in this report?",
-  "Summarize this report into 5 bullet points for leadership."
+  'Explain the final recommendation in simpler terms.',
+  'Compare the key options in more detail.',
+  'Modify the executive summary to highlight key risks.',
+  'What are the biggest uncertainties in this report?',
+  'Summarize this report into 5 bullet points for leadership.',
 ];
 
 export default function ReportChat({ runId, onReportUpdated, onNewChatTrigger }) {
@@ -71,7 +71,7 @@ export default function ReportChat({ runId, onReportUpdated, onNewChatTrigger })
       const assistantMsg = {
         id: `ast-${Date.now()}`,
         role: 'assistant',
-        content: res.chat_response
+        content: res.chat_response,
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
@@ -131,16 +131,15 @@ export default function ReportChat({ runId, onReportUpdated, onNewChatTrigger })
             <Sparkles className="h-8 w-8 text-purple-400 mx-auto" />
             <p className="text-sm font-semibold text-slate-300">Have questions about this research report?</p>
             <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Ask questions to clarify findings, request simplifications, or ask to modify specific sections of the report.
+              Ask questions to clarify findings, request simplifications, or ask to modify specific sections
+              of the report.
             </p>
           </div>
         ) : (
           messages.map((m) => (
             <div
               key={m.id}
-              className={`flex items-start gap-3 ${
-                m.role === 'user' ? 'justify-end' : 'justify-start'
-              }`}
+              className={`flex items-start gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {m.role === 'assistant' && (
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shrink-0 mt-1 shadow-md">

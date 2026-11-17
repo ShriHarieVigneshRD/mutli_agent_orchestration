@@ -1,37 +1,37 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { 
-  BrainCircuit, 
-  Globe, 
-  BarChart3, 
-  Newspaper, 
-  ShieldCheck, 
-  PenTool, 
-  Eye, 
-  FileText, 
-  ExternalLink, 
-  CheckCircle2, 
-  Clock, 
+import {
+  BrainCircuit,
+  Globe,
+  BarChart3,
+  Newspaper,
+  ShieldCheck,
+  PenTool,
+  Eye,
+  FileText,
+  ExternalLink,
+  CheckCircle2,
+  Clock,
   Layers,
   ArrowRight,
   XCircle,
-  AlertCircle
+  AlertCircle,
 } from 'lucide-react';
 import ReportViewer from './ReportViewer';
 
-export default function AgentInspector({ 
-  query, 
-  status, 
-  completedNodes = [], 
-  agentLogs = {}, 
-  sources = [], 
-  report = null, 
+export default function AgentInspector({
+  query,
+  status,
+  completedNodes = [],
+  agentLogs = {},
+  sources = [],
+  report = null,
   criticFeedback = '',
   revisionCount = 0,
   runId,
   onReportUpdated,
-  onNewChatTrigger
+  onNewChatTrigger,
 }) {
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -44,21 +44,27 @@ export default function AgentInspector({
     { id: 'verifier', label: 'Verifier', icon: ShieldCheck },
     { id: 'writer', label: 'Writer', icon: PenTool },
     { id: 'critic', label: 'Critic', icon: Eye },
-    { id: 'report', label: 'Final Report', icon: FileText }
+    { id: 'report', label: 'Final Report', icon: FileText },
   ];
 
   // Helper getters for node data & structured agent_outputs
   const plannerData = agentLogs.planner?.plan || null;
   const researcherData = agentLogs.researcher?.research_findings || [];
-  const researcherStatus = agentLogs.researcher?.agent_outputs?.researcher?.status || (completedNodes.includes('researcher') ? 'completed' : 'waiting');
+  const researcherStatus =
+    agentLogs.researcher?.agent_outputs?.researcher?.status ||
+    (completedNodes.includes('researcher') ? 'completed' : 'waiting');
   const researcherError = agentLogs.researcher?.agent_outputs?.researcher?.error;
 
   const dataAnalystData = agentLogs.data_analyst?.data_findings || [];
-  const dataAnalystStatus = agentLogs.data_analyst?.agent_outputs?.data_analyst?.status || (completedNodes.includes('data_analyst') ? 'completed' : 'waiting');
+  const dataAnalystStatus =
+    agentLogs.data_analyst?.agent_outputs?.data_analyst?.status ||
+    (completedNodes.includes('data_analyst') ? 'completed' : 'waiting');
   const dataAnalystError = agentLogs.data_analyst?.agent_outputs?.data_analyst?.error;
 
   const newsData = agentLogs.news_agent?.news_findings || [];
-  const newsStatus = agentLogs.news_agent?.agent_outputs?.news_agent?.status || (completedNodes.includes('news_agent') ? 'completed' : 'waiting');
+  const newsStatus =
+    agentLogs.news_agent?.agent_outputs?.news_agent?.status ||
+    (completedNodes.includes('news_agent') ? 'completed' : 'waiting');
   const newsError = agentLogs.news_agent?.agent_outputs?.news_agent?.error;
 
   const verifierEvidence = agentLogs.verifier?.verified_evidence || [];
@@ -149,22 +155,24 @@ export default function AgentInspector({
                 { name: '5. Verifier Agent', id: 'verifier', desc: 'Claims & evidence verification' },
                 { name: '6. Writer Agent', id: 'writer', desc: 'Report synthesis' },
                 { name: '7. Critic Agent', id: 'critic', desc: 'Quality review & reflection' },
-                { name: '8. Final Report', id: 'report', desc: 'Publication markdown output' }
+                { name: '8. Final Report', id: 'report', desc: 'Publication markdown output' },
               ].map((stage) => {
                 const isCompleted = completedNodes.includes(stage.id) || (stage.id === 'report' && report);
 
                 return (
-                  <div 
+                  <div
                     key={stage.id}
                     onClick={() => setActiveTab(stage.id)}
                     className={`cursor-pointer p-4.5 rounded-2xl border transition-all ${
-                      isCompleted 
+                      isCompleted
                         ? 'bg-slate-900/80 border-emerald-500/40 hover:border-emerald-400'
                         : 'bg-slate-900/30 border-white/5 opacity-60'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{stage.name}</span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        {stage.name}
+                      </span>
                       {isCompleted ? (
                         <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                       ) : (
@@ -197,10 +205,15 @@ export default function AgentInspector({
             {plannerData ? (
               <div className="space-y-6">
                 <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3">
-                  <h4 className="text-sm font-bold text-amber-400 uppercase tracking-wider">Research Tasks Generated</h4>
+                  <h4 className="text-sm font-bold text-amber-400 uppercase tracking-wider">
+                    Research Tasks Generated
+                  </h4>
                   <ul className="space-y-2">
                     {plannerData.tasks?.map((task, i) => (
-                      <li key={i} className="text-sm text-slate-200 flex items-start gap-2.5 bg-slate-900/60 p-3 rounded-xl border border-white/5">
+                      <li
+                        key={i}
+                        className="text-sm text-slate-200 flex items-start gap-2.5 bg-slate-900/60 p-3 rounded-xl border border-white/5"
+                      >
                         <span className="h-6 w-6 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center shrink-0">
                           {i + 1}
                         </span>
@@ -212,10 +225,15 @@ export default function AgentInspector({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-2">
-                    <h4 className="text-sm font-bold text-cyan-400 uppercase tracking-wider">Assigned Agents</h4>
+                    <h4 className="text-sm font-bold text-cyan-400 uppercase tracking-wider">
+                      Assigned Agents
+                    </h4>
                     <div className="flex flex-wrap gap-2 pt-1">
                       {plannerData.agents_required?.map((agent, i) => (
-                        <span key={i} className="px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
+                        <span
+                          key={i}
+                          className="px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 text-xs font-semibold"
+                        >
                           {agent}
                         </span>
                       ))}
@@ -223,10 +241,15 @@ export default function AgentInspector({
                   </div>
 
                   <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-2">
-                    <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider">Focus Areas</h4>
+                    <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider">
+                      Focus Areas
+                    </h4>
                     <div className="flex flex-wrap gap-2 pt-1">
                       {plannerData.focus_areas?.map((area, i) => (
-                        <span key={i} className="px-3 py-1 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 text-xs font-semibold">
+                        <span
+                          key={i}
+                          className="px-3 py-1 rounded-full bg-indigo-950/80 border border-indigo-500/30 text-indigo-300 text-xs font-semibold"
+                        >
                           {area}
                         </span>
                       ))}
@@ -248,7 +271,9 @@ export default function AgentInspector({
                 <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
                   <Globe className="h-6 w-6 text-cyan-400" /> Web Research Agent Output
                 </h3>
-                <p className="text-sm text-slate-300">Gathered web findings with verified original source URLs</p>
+                <p className="text-sm text-slate-300">
+                  Gathered web findings with verified original source URLs
+                </p>
               </div>
               {renderStatusBadge(researcherStatus)}
             </div>
@@ -270,7 +295,10 @@ export default function AgentInspector({
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {researcherData.map((item, i) => (
-                  <div key={i} className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 flex flex-col justify-between">
+                  <div
+                    key={i}
+                    className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3 flex flex-col justify-between"
+                  >
                     <div className="space-y-2">
                       <span className="text-xs font-mono uppercase font-bold text-cyan-400 bg-cyan-950/80 px-2.5 py-0.5 rounded-full border border-cyan-500/30">
                         Finding #{i + 1}
@@ -309,7 +337,9 @@ export default function AgentInspector({
                 <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
                   <BarChart3 className="h-6 w-6 text-emerald-400" /> Data Analyst Output
                 </h3>
-                <p className="text-sm text-slate-300">Quantitative metrics, direct statistics, and derived assumptions</p>
+                <p className="text-sm text-slate-300">
+                  Quantitative metrics, direct statistics, and derived assumptions
+                </p>
               </div>
               {renderStatusBadge(dataAnalystStatus)}
             </div>
@@ -347,7 +377,9 @@ export default function AgentInspector({
                 <h3 className="text-xl font-bold text-white flex items-center gap-2.5">
                   <Newspaper className="h-6 w-6 text-purple-400" /> News Agent Output
                 </h3>
-                <p className="text-sm text-slate-300">2025/2026 industry news, policy shifts, and recent developments</p>
+                <p className="text-sm text-slate-300">
+                  2025/2026 industry news, policy shifts, and recent developments
+                </p>
               </div>
               {renderStatusBadge(newsStatus)}
             </div>
@@ -411,12 +443,16 @@ export default function AgentInspector({
               </div>
               <div className="glass-panel p-4 rounded-2xl border border-rose-500/30 bg-rose-950/20 text-center">
                 <span className="text-2xl font-extrabold text-rose-400">{unsupportedClaims.length}</span>
-                <p className="text-xs text-slate-300 font-bold uppercase mt-1">Flagged / Unsupported Claims</p>
+                <p className="text-xs text-slate-300 font-bold uppercase mt-1">
+                  Flagged / Unsupported Claims
+                </p>
               </div>
             </div>
 
             <div className="space-y-3">
-              <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider">Verified Claims Matrix</h4>
+              <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-wider">
+                Verified Claims Matrix
+              </h4>
               {verifierEvidence.map((item, i) => (
                 <div key={i} className="glass-panel p-4 rounded-2xl border border-white/10 space-y-2">
                   <div className="flex items-center justify-between">
@@ -468,12 +504,16 @@ export default function AgentInspector({
 
             <div className="glass-panel p-6 rounded-2xl border border-purple-500/30 bg-purple-950/20 space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-purple-300 uppercase tracking-wider">Editorial Decision</span>
-                <span className={`px-4 py-1.5 rounded-full text-xs font-extrabold uppercase ${
-                  criticDecision === 'APPROVE'
-                    ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/40'
-                    : 'bg-amber-950 text-amber-400 border border-amber-500/40'
-                }`}>
+                <span className="text-sm font-bold text-purple-300 uppercase tracking-wider">
+                  Editorial Decision
+                </span>
+                <span
+                  className={`px-4 py-1.5 rounded-full text-xs font-extrabold uppercase ${
+                    criticDecision === 'APPROVE'
+                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/40'
+                      : 'bg-amber-950 text-amber-400 border border-amber-500/40'
+                  }`}
+                >
                   {criticDecision || 'APPROVED'}
                 </span>
               </div>
@@ -486,9 +526,9 @@ export default function AgentInspector({
 
         {/* FINAL REPORT TAB */}
         {activeTab === 'report' && report && (
-          <ReportViewer 
-            report={report} 
-            sources={sources} 
+          <ReportViewer
+            report={report}
+            sources={sources}
             criticFeedback={criticFeedback}
             runId={runId}
             onReportUpdated={onReportUpdated}

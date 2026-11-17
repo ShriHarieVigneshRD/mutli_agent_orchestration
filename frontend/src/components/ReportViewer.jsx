@@ -1,26 +1,26 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { 
-  FileText, 
-  Download, 
-  Copy, 
-  Check, 
-  ExternalLink, 
-  ShieldCheck, 
+import {
+  FileText,
+  Download,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldCheck,
   MessageSquare,
   BookOpen,
-  Sparkles
+  Sparkles,
 } from 'lucide-react';
 import ReportChat from './ReportChat';
 
-export default function ReportViewer({ 
-  report, 
-  sources = [], 
-  criticFeedback = '', 
-  runId, 
-  onReportUpdated, 
-  onNewChatTrigger 
+export default function ReportViewer({
+  report,
+  sources = [],
+  criticFeedback = '',
+  runId,
+  onReportUpdated,
+  onNewChatTrigger,
 }) {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState('report'); // 'report' | 'sources' | 'critic'
@@ -75,7 +75,9 @@ export default function ReportViewer({
               <button
                 onClick={() => setActiveTab('report')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-medium transition-all ${
-                  activeTab === 'report' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-white'
+                  activeTab === 'report'
+                    ? 'bg-cyan-500/20 text-cyan-300 font-semibold'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <FileText className="h-4 w-4" /> Full Report
@@ -83,7 +85,9 @@ export default function ReportViewer({
               <button
                 onClick={() => setActiveTab('sources')}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-medium transition-all ${
-                  activeTab === 'sources' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-white'
+                  activeTab === 'sources'
+                    ? 'bg-cyan-500/20 text-cyan-300 font-semibold'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
                 <BookOpen className="h-4 w-4" /> Sources ({sources.length})
@@ -92,7 +96,9 @@ export default function ReportViewer({
                 <button
                   onClick={() => setActiveTab('critic')}
                   className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-medium transition-all ${
-                    activeTab === 'critic' ? 'bg-purple-500/20 text-purple-300 font-semibold' : 'text-slate-400 hover:text-white'
+                    activeTab === 'critic'
+                      ? 'bg-purple-500/20 text-purple-300 font-semibold'
+                      : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <MessageSquare className="h-4 w-4" /> Critic Log
@@ -122,9 +128,7 @@ export default function ReportViewer({
         <div className="p-8 sm:p-10 overflow-y-auto max-h-[850px] bg-slate-950/40">
           {activeTab === 'report' && (
             <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {currentMarkdown}
-              </ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentMarkdown}</ReactMarkdown>
             </div>
           )}
 
@@ -169,7 +173,9 @@ export default function ReportViewer({
                 <MessageSquare className="h-5 w-5" /> Critic Reflection & Review Feedback
               </div>
               <p className="text-sm text-slate-200 leading-relaxed font-mono whitespace-pre-wrap">
-                {criticFeedback || report.critic_feedback || 'Critic approved report without additional revision requirements.'}
+                {criticFeedback ||
+                  report.critic_feedback ||
+                  'Critic approved report without additional revision requirements.'}
               </p>
             </div>
           )}
@@ -178,8 +184,8 @@ export default function ReportViewer({
 
       {/* EMBEDDED REPORT FOLLOW-UP CHAT */}
       {runId && (
-        <ReportChat 
-          runId={runId} 
+        <ReportChat
+          runId={runId}
           onReportUpdated={handleReportUpdatedFromChat}
           onNewChatTrigger={onNewChatTrigger}
         />

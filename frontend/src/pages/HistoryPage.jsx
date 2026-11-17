@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getResearchHistory, getResearchRun } from '../services/api';
+import { getResearchHistory, getResearchRun } from '../lib/api';
 import { History, FileText, CheckCircle2, AlertTriangle, Clock, Search, Bot } from 'lucide-react';
 import AgentInspector from '../components/AgentInspector';
 
@@ -38,10 +38,10 @@ export default function HistoryPage() {
         setSelectedReport(null);
       }
       setSources(data.sources || []);
-      
+
       if (data.logs) {
         const map = {};
-        data.logs.forEach(l => {
+        data.logs.forEach((l) => {
           if (l.details) map[l.agent_name] = l.details;
         });
         setAgentLogs(map);
@@ -51,9 +51,7 @@ export default function HistoryPage() {
     }
   };
 
-  const filteredHistory = history.filter((h) =>
-    h.query.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredHistory = history.filter((h) => h.query.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="mx-auto w-full max-w-[1700px] px-6 sm:px-10 py-8 space-y-8">
@@ -63,7 +61,9 @@ export default function HistoryPage() {
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
             <History className="h-8 w-8 text-purple-400" /> Research History & Multi-Agent Archive
           </h1>
-          <p className="text-base text-slate-300">View, inspect, and audit past multi-agent execution outputs</p>
+          <p className="text-base text-slate-300">
+            View, inspect, and audit past multi-agent execution outputs
+          </p>
         </div>
 
         {/* Search Input */}
@@ -120,7 +120,9 @@ export default function HistoryPage() {
                     </span>
                   )}
                 </div>
-                <p className="text-sm font-semibold text-slate-100 line-clamp-2 leading-relaxed">{item.query}</p>
+                <p className="text-sm font-semibold text-slate-100 line-clamp-2 leading-relaxed">
+                  {item.query}
+                </p>
                 <span className="text-xs text-slate-400 block mt-2 font-mono">
                   {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
                 </span>
@@ -135,21 +137,32 @@ export default function HistoryPage() {
             <AgentInspector
               query={selectedRun.query}
               status={selectedRun.status}
-              completedNodes={['planner', 'researcher', 'data_analyst', 'news_agent', 'verifier', 'writer', 'critic']}
+              completedNodes={[
+                'planner',
+                'researcher',
+                'data_analyst',
+                'news_agent',
+                'verifier',
+                'writer',
+                'critic',
+              ]}
               agentLogs={agentLogs}
               sources={sources}
               report={selectedReport}
               criticFeedback={selectedReport?.critic_feedback || ''}
               revisionCount={selectedRun.revision_count || 0}
               runId={selectedRun.id}
-              onReportUpdated={(updatedMd) => setSelectedReport((prev) => ({ ...(prev || {}), full_markdown: updatedMd }))}
+              onReportUpdated={(updatedMd) =>
+                setSelectedReport((prev) => ({ ...(prev || {}), full_markdown: updatedMd }))
+              }
             />
           ) : (
             <div className="glass-panel rounded-3xl p-16 border border-white/10 text-center space-y-4">
               <Bot className="h-14 w-14 text-cyan-400/80 mx-auto" />
               <h3 className="text-lg font-bold text-white">Select a research run to inspect agent outputs</h3>
               <p className="text-sm text-slate-400 max-w-md mx-auto">
-                Inspect past multi-agent execution steps, task planning, verified sources, and critic reflection logs.
+                Inspect past multi-agent execution steps, task planning, verified sources, and critic
+                reflection logs.
               </p>
             </div>
           )}

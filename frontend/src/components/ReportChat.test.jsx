@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ReportChat from './ReportChat';
-import * as api from '../services/api';
+import * as api from '../lib/api';
 
-vi.mock('../services/api', () => ({
+vi.mock('../lib/api', () => ({
   getReportChat: vi.fn(),
   sendReportChatMessage: vi.fn(),
 }));

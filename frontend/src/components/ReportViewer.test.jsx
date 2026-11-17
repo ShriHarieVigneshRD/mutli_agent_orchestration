@@ -3,7 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import ReportViewer from './ReportViewer';
 
 const REPORT = { full_markdown: '# Solar Report\n\nBody text', critic_feedback: 'Good' };
-const SOURCES = [{ title: 'Solar costs', url: 'https://example.org/solar', snippet: 'fell 40%', source_type: 'web' }];
+const SOURCES = [
+  { title: 'Solar costs', url: 'https://example.org/solar', snippet: 'fell 40%', source_type: 'web' },
+];
 
 describe('ReportViewer', () => {
   it('renders markdown, copies it and lists sources', async () => {
@@ -16,7 +18,10 @@ describe('ReportViewer', () => {
     expect(writeText).toHaveBeenCalledWith(REPORT.full_markdown);
 
     fireEvent.click(screen.getByRole('button', { name: /Sources \(1\)/ }));
-    expect(screen.getByRole('link', { name: /example\.org\/solar/ })).toHaveAttribute('href', 'https://example.org/solar');
+    expect(screen.getByRole('link', { name: /example\.org\/solar/ })).toHaveAttribute(
+      'href',
+      'https://example.org/solar',
+    );
   });
 
   it('exports the report as a markdown file', () => {
