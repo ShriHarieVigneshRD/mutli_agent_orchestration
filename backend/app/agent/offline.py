@@ -48,6 +48,7 @@ def verification(sources: Sequence[Mapping[str, Any]]) -> str:
 
 
 def report(query: str, sources: Sequence[Mapping[str, Any]], figures: Sequence[Mapping[str, Any]]) -> str:
+    cite = {src["url"]: src["n"] for src in sources}
     lines = [f"# {query.strip()[:120]}", "", f"> {NOTICE}", "", "## Executive Summary", ""]
     if sources:
         lines.append(
@@ -57,12 +58,17 @@ def report(query: str, sources: Sequence[Mapping[str, Any]], figures: Sequence[M
         lines.append("Search returned no sources for this question, so there is nothing to summarise.")
     if figures:
         lines += ["", "## Figures Found", ""]
-        lines += [f"- {f['title']}: {f['content'].replace(chr(10), ' ')}" for f in figures]
+        for f in figures:
+            values = ", ".join(
+                line.lstrip("- ").strip() for line in f["content"].splitlines() if line.strip()
+            )
+            ref = f" [{cite[f['url']]}]" if f.get("url") in cite else ""
+            lines.append(f"- {values}{ref}")
     if sources:
         lines += ["", "## Source Excerpts", ""]
-        lines += [f"- **{s['title']}** [{s['n']}]: {s['content'][:240]}" for s in sources]
+        lines += [f"- **{src['title']}**. {src['content'][:240]} [{src['n']}]" for src in sources]
         lines += ["", "## References & Sources", ""]
-        lines += [f"[{s['n']}] {s['title']}, {s['url']}  " for s in sources]
+        lines += [f"{src['n']}. {src['title']}, <{src['url']}>" for src in sources]
     return "\n".join(lines) + "\n"
 
 
