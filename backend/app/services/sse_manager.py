@@ -1,42 +1,54 @@
+"""In-process pub/sub for run progress, with replay so late or reconnecting clients miss nothing."""
+
 import asyncio
 import json
 import logging
-from typing import Dict, Set
+from collections import OrderedDict
+from datetime import UTC, datetime
 
-logger = logging.getLogger("SSEManager")
+logger = logging.getLogger(__name__)
+
+TERMINAL_EVENTS = {"research_completed", "research_failed"}
+MAX_RUNS_KEPT = 50  # replay history is kept for the most recent runs only
+
 
 class SSEManager:
-    def __init__(self):
-        # Maps run_id -> Set of asyncio Queues for connected subscribers
-        self._subscribers: Dict[str, Set[asyncio.Queue]] = {}
+    # shortcut: state lives in this process; with several workers, move it to Redis pub/sub.
+    def __init__(self) -> None:
+        self._subscribers: dict[str, set[asyncio.Queue[str]]] = {}
+        self._history: OrderedDict[str, list[str]] = OrderedDict()
 
-    def subscribe(self, run_id: str) -> asyncio.Queue:
-        if run_id not in self._subscribers:
-            self._subscribers[run_id] = set()
-        queue: asyncio.Queue = asyncio.Queue()
-        self._subscribers[run_id].add(queue)
-        logger.info(f"New client subscribed to SSE for run: {run_id}")
+    def subscribe(self, run_id: str) -> asyncio.Queue[str]:
+        """A queue pre-filled with every event already sent for this run."""
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        for payload in self._history.get(run_id, []):
+            queue.put_nowait(payload)
+        self._subscribers.setdefault(run_id, set()).add(queue)
         return queue
 
-    def unsubscribe(self, run_id: str, queue: asyncio.Queue):
-        if run_id in self._subscribers:
-            self._subscribers[run_id].discard(queue)
-            if not self._subscribers[run_id]:
+    def unsubscribe(self, run_id: str, queue: asyncio.Queue[str]) -> None:
+        subscribers = self._subscribers.get(run_id)
+        if subscribers is not None:
+            subscribers.discard(queue)
+            if not subscribers:
                 del self._subscribers[run_id]
-        logger.info(f"Client unsubscribed from SSE for run: {run_id}")
 
-    async def broadcast(self, run_id: str, event_type: str, data: dict):
-        event_payload = {
-            "event": event_type,
-            "run_id": run_id,
-            "data": data
-        }
-        json_data = json.dumps(event_payload)
-        
-        if run_id in self._subscribers:
-            for queue in list(self._subscribers[run_id]):
-                await queue.put(json_data)
-                
-        logger.debug(f"Broadcasted event '{event_type}' for run '{run_id}'")
+    def has_history(self, run_id: str) -> bool:
+        return run_id in self._history
+
+    async def broadcast(self, run_id: str, event_type: str, data: dict) -> None:
+        at = datetime.now(UTC).isoformat().replace("+00:00", "Z")  # replayed events keep their real time
+        payload = json.dumps({"event": event_type, "run_id": run_id, "data": data, "at": at})
+        self._history.setdefault(run_id, []).append(payload)
+        self._history.move_to_end(run_id)
+        while len(self._history) > MAX_RUNS_KEPT:
+            self._history.popitem(last=False)
+        for queue in list(self._subscribers.get(run_id, ())):
+            queue.put_nowait(payload)
+
+
+def is_terminal(payload: str) -> bool:
+    return json.loads(payload).get("event") in TERMINAL_EVENTS
+
 
 sse_manager = SSEManager()

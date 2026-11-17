@@ -1,81 +1,146 @@
+"""Model gateway: per-kind model chains with a 4-tier fallback over OpenRouter.
+
+Every LLM call goes through `invoke(agent, ...)`. Agents of the same kind share a primary model
+("per-agent" mode), or one model serves every agent ("single" mode). Either way the chain continues
+with SECONDARY → THIRD → FALLBACK. Without an API key, each caller's `offline` reply is returned
+instead, so the app still runs end to end as a clearly labelled demo.
+"""
+
+import json
 import logging
-from typing import Optional, List, Any
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
+
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, AIMessage
-from langchain_core.outputs import ChatResult, ChatGeneration
 from langchain_openai import ChatOpenAI
-from app.config import settings
+from pydantic import SecretStr
 
-logger = logging.getLogger("LLMFactory")
+from app.config import PER_AGENT, settings
 
-class MockFallbackLLM(BaseChatModel):
-    """Fallback LLM model for dev mode when OPENROUTER_API_KEY is not configured."""
-    model_name: str = "mock-fallback"
-    
-    def _generate(
-        self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[Any] = None,
-        **kwargs
-    ) -> ChatResult:
-        last_msg = messages[-1].content if messages else "No query"
-        mock_response = (
-            "# Mock Research Synthesis\n\n"
-            "## Executive Summary\n"
-            "This is a dev fallback report because `OPENROUTER_API_KEY` was not detected in `backend/.env`.\n\n"
-            "Please paste your OpenRouter API key into `backend/.env`:\n"
-            "```env\n"
-            "OPENROUTER_API_KEY=sk-or-v1-...\n"
-            "```\n\n"
-            f"Query processed: {last_msg[:150]}"
-        )
-        generation = ChatGeneration(message=AIMessage(content=mock_response))
-        return ChatResult(generations=[generation])
-    
-    @property
-    def _llm_type(self) -> str:
-        return "mock-fallback"
+logger = logging.getLogger(__name__)
 
-# Curated list of high-performing free OpenRouter models
-FREE_OPENROUTER_MODELS = [
-    "openrouter/free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "deepseek/deepseek-r1:free",
-    "google/gemini-2.0-flash-lite-preview-02-05:free",
-    "qwen/qwen-2.5-coder-32b-instruct:free",
-    "mistralai/mistral-7b-instruct:free",
-    "microsoft/phi-3-medium-128k-instruct:free"
-]
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OFFLINE_MODEL = "offline-demo"
 
-class LLMFactory:
-    @staticmethod
-    def get_model(provider: Optional[str] = None, temperature: float = 0.2) -> BaseChatModel:
-        """
-        Builds a ChatOpenAI model instance targeting OpenRouter's API endpoint.
-        The `provider` parameter can contain any model ID selected by the user.
-        """
-        model_name = provider or settings.DEFAULT_MODEL or FREE_OPENROUTER_MODELS[0]
-        openrouter_key = settings.OPENROUTER_API_KEY.strip().strip('"').strip("'")
-        
-        # Verify valid key format before making HTTP call
-        if openrouter_key and len(openrouter_key) > 10 and not openrouter_key.startswith("your_"):
-            try:
-                return ChatOpenAI(
-                    model=model_name,
-                    openai_api_key=openrouter_key,
-                    openai_api_base="https://openrouter.ai/api/v1",
-                    temperature=temperature,
-                    default_headers={
-                        "HTTP-Referer": "https://researchgraph.ai",
-                        "X-Title": "Autonomous Multi-Agent Research Intelligence System"
-                    }
-                )
-            except Exception as e:
-                logger.warning(f"Failed to initialize ChatOpenAI for model '{model_name}': {e}")
+# The agent hierarchy, grouped by kind. Researcher and news agent are search tools (no model calls).
+AGENT_KINDS: dict[str, dict[str, Any]] = {
+    "supervisor": {"label": "Supervisor", "agents": ["planner"], "setting": "PLANNER_MODEL"},
+    "specialist": {"label": "Specialists", "agents": ["data_analyst"], "setting": "SPECIALIST_MODEL"},
+    "reviewer": {"label": "Reviewers", "agents": ["verifier", "critic"], "setting": "REVIEWER_MODEL"},
+    "writer": {"label": "Writers", "agents": ["writer", "chat"], "setting": "WRITER_MODEL"},
+}
+AGENT_KIND = {agent: kind for kind, info in AGENT_KINDS.items() for agent in info["agents"]}
 
-        logger.warning(
-            f"OPENROUTER_API_KEY is not configured in backend/.env. "
-            "Please paste your OPENROUTER_API_KEY into backend/.env"
-        )
-        return MockFallbackLLM()
+FAILURE_MESSAGES = {
+    "DAILY_LIMIT": "The free OpenRouter daily limit is used up. It resets at 00:00 UTC.",
+    "RATE_LIMITED": "Every model in the fallback chain is rate-limited right now. Try again in a minute.",
+    "ALL_FAILED": "No model in the fallback chain returned an answer.",
+}
+
+
+class LLMUnavailable(Exception):
+    """Every model in the chain failed. `reason` is DAILY_LIMIT, RATE_LIMITED or ALL_FAILED."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(FAILURE_MESSAGES[reason])
+
+
+@dataclass
+class LLMReply:
+    text: str
+    model: str
+
+
+def kind_model(kind: str) -> str:
+    return getattr(settings, AGENT_KINDS[kind]["setting"])
+
+
+def resolve_model_setting(model_mode: str | None, model: str | None, legacy_provider: str | None) -> str:
+    """The run's model setting: PER_AGENT or one allowed model id. Raises ValueError otherwise."""
+    if model_mode == "single" or (model_mode is None and legacy_provider and legacy_provider != PER_AGENT):
+        chosen = model or legacy_provider or settings.default_model
+        if chosen not in settings.model_options:
+            raise ValueError(f"Unknown model '{chosen}'. Choose one of: {', '.join(settings.model_options)}")
+        return chosen
+    if model_mode in (None, "per_agent"):
+        return PER_AGENT
+    raise ValueError("model_mode must be 'per_agent' or 'single'")
+
+
+def model_chain(agent: str, model_setting: str | None) -> list[str]:
+    """Primary model for this agent, then the shared fallback tiers, without duplicates."""
+    primary = model_setting if model_setting and model_setting != PER_AGENT else kind_model(AGENT_KIND[agent])
+    return list(dict.fromkeys([primary, *settings.fallback_models]))
+
+
+def _chat_model(model: str, temperature: float) -> BaseChatModel:
+    return ChatOpenAI(
+        model=model,
+        api_key=SecretStr(settings.OPENROUTER_API_KEY.strip().strip("\"'")),
+        base_url=OPENROUTER_BASE_URL,
+        temperature=temperature,
+        max_retries=0,  # the chain is the retry strategy; a dead model should cost seconds
+        timeout=settings.LLM_TIMEOUT_S,
+        default_headers={"X-Title": settings.PROJECT_NAME},
+    )
+
+
+def invoke(
+    agent: str,
+    messages: list,
+    model_setting: str | None = None,
+    temperature: float = 0.2,
+    offline: Callable[[], str] | None = None,
+) -> LLMReply:
+    """First non-empty reply along the agent's chain. Raises LLMUnavailable when all models fail."""
+    if not settings.llm_configured:
+        return LLMReply(offline() if offline else "", OFFLINE_MODEL)
+
+    rate_limited = daily_limit = False
+    for model in model_chain(agent, model_setting):
+        try:
+            response = _chat_model(model, temperature).invoke(messages)
+        except Exception as e:
+            if getattr(e, "status_code", None) == 429:
+                rate_limited = True
+                daily_limit = daily_limit or "per-day" in str(e).lower()
+            logger.warning("[%s] model %s failed: %s. Trying next in chain.", agent, model, e)
+            continue
+        text = extract_text(response.content).strip()
+        if text:
+            return LLMReply(text, model)
+        logger.warning("[%s] model %s returned an empty reply. Trying next in chain.", agent, model)
+
+    raise LLMUnavailable("DAILY_LIMIT" if daily_limit else "RATE_LIMITED" if rate_limited else "ALL_FAILED")
+
+
+def extract_text(content: Any) -> str:
+    """Plain text from a model reply that may be a string or a list of content blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and "text" in part:
+                parts.append(part["text"])
+        return "\n".join(parts)
+    return str(content)
+
+
+def parse_json_from_llm(content: Any) -> dict[str, Any]:
+    """JSON object from a model reply, tolerating ``` fences and prose around it; {} if none."""
+    text = extract_text(content).strip()
+    text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        start, end = text.find("{"), text.rfind("}")
+        try:
+            parsed = json.loads(text[start : end + 1]) if 0 <= start < end else {}
+        except ValueError:
+            parsed = {}
+    return parsed if isinstance(parsed, dict) else {}

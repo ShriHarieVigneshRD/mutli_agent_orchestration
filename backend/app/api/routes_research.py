@@ -1,173 +1,200 @@
-import asyncio
+import json
 import logging
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from typing import Literal
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from sse_starlette.sse import EventSourceResponse
 
-from app.db.database import get_db
-from app.db.models import ResearchRun, ResearchPlan, AgentRunLog, Source, Report
-from app.services.research_service import execute_research_run
-from app.services.sse_manager import sse_manager
+from app.agent.llm import LLMUnavailable, resolve_model_setting
+from app.api.deps import limit_chat, limit_research
+from app.api.serializers import run_detail
+from app.config import settings
+from app.db.database import AsyncSessionLocal, get_db
+from app.db.models import (
+    AgentRunLog,
+    ChatMessage,
+    Report,
+    ReportVersion,
+    ResearchPlan,
+    ResearchRun,
+    Source,
+)
+from app.services import research_service
+from app.services.chat_service import (
+    RunNotFound,
+    count_versions,
+    get_chat_history,
+    process_followup_chat,
+    revert_report,
+)
+from app.services.sse_manager import is_terminal, sse_manager
 
-logger = logging.getLogger("ResearchRoutes")
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/research", tags=["research"])
 
+MIN_QUERY_CHARS = 4
+
+
 class CreateResearchRequest(BaseModel):
     query: str
-    provider: Optional[str] = "groq"
+    model_mode: Literal["per_agent", "single"] | None = None
+    model: str | None = None
+    provider: str | None = None  # legacy: a model id; kept so older clients keep working
+
 
 class CreateResearchResponse(BaseModel):
     run_id: str
     status: str
     message: str
 
-@router.post("", response_model=CreateResearchResponse)
-async def create_research_run(
-    payload: CreateResearchRequest,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
-):
-    if not payload.query or not payload.query.strip():
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
-
-    new_run = ResearchRun(
-        query=payload.query.strip(),
-        provider=payload.provider or "groq",
-        status="pending",
-        current_step="initialized"
-    )
-    db.add(new_run)
-    await db.commit()
-    await db.refresh(new_run)
-
-    # Launch LangGraph execution asynchronously in background task
-    background_tasks.add_task(
-        execute_research_run,
-        run_id=new_run.id,
-        query=new_run.query,
-        provider=new_run.provider
-    )
-
-    return CreateResearchResponse(
-        run_id=new_run.id,
-        status="pending",
-        message="Research run initiated asynchronously."
-    )
-
-@router.get("/{run_id}")
-async def get_research_run(run_id: str, db: AsyncSession = Depends(get_db)):
-    run_rec = await db.get(ResearchRun, run_id)
-    if not run_rec:
-        raise HTTPException(status_code=404, detail="Research run not found")
-
-    # Fetch associated plan, logs, sources, report
-    plan_stmt = select(ResearchPlan).where(ResearchPlan.run_id == run_id)
-    plan_res = await db.execute(plan_stmt)
-    plan = plan_res.scalar_one_or_none()
-
-    sources_stmt = select(Source).where(Source.run_id == run_id)
-    sources_res = await db.execute(sources_stmt)
-    sources = sources_res.scalars().all()
-
-    report_stmt = select(Report).where(Report.run_id == run_id)
-    report_res = await db.execute(report_stmt)
-    report = report_res.scalar_one_or_none()
-
-    logs_stmt = select(AgentRunLog).where(AgentRunLog.run_id == run_id).order_by(AgentRunLog.timestamp.asc())
-    logs_res = await db.execute(logs_stmt)
-    logs = logs_res.scalars().all()
-
-    return {
-        "id": run_rec.id,
-        "query": run_rec.query,
-        "provider": run_rec.provider,
-        "status": run_rec.status,
-        "current_step": run_rec.current_step,
-        "revision_count": run_rec.revision_count,
-        "error_message": run_rec.error_message,
-        "created_at": run_rec.created_at.isoformat() if run_rec.created_at else None,
-        "plan": {
-            "tasks": plan.tasks if plan else [],
-            "agents_required": plan.agents_required if plan else []
-        } if plan else None,
-        "sources": [
-            {
-                "id": s.id,
-                "title": s.title,
-                "url": s.url,
-                "snippet": s.snippet,
-                "source_type": s.source_type,
-                "confidence_score": s.confidence_score
-            }
-            for s in sources
-        ],
-        "logs": [
-            {
-                "agent_name": l.agent_name,
-                "status": l.status,
-                "details": l.details,
-                "timestamp": l.timestamp.isoformat() if l.timestamp else None
-            }
-            for l in logs
-        ],
-        "report": {
-            "id": report.id,
-            "title": report.title,
-            "executive_summary": report.executive_summary,
-            "full_markdown": report.full_markdown,
-            "critic_feedback": report.critic_feedback,
-            "status": report.status
-        } if report else None
-    }
 
 class ChatMessageRequest(BaseModel):
     message: str
 
+
+def _clean_text(text: str, max_chars: int, what: str, min_chars: int = 1) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail=f"{what} cannot be empty")
+    if len(cleaned) < min_chars:
+        raise HTTPException(status_code=422, detail=f"{what} is too short (at least {min_chars} characters).")
+    if len(cleaned) > max_chars:
+        raise HTTPException(status_code=422, detail=f"{what} is too long (at most {max_chars} characters).")
+    return cleaned
+
+
+@router.post("", response_model=CreateResearchResponse, dependencies=[Depends(limit_research)])
+async def create_research_run(
+    payload: CreateResearchRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    query = _clean_text(payload.query, settings.MAX_QUERY_CHARS, "Query", MIN_QUERY_CHARS)
+    try:
+        model_setting = resolve_model_setting(payload.model_mode, payload.model, payload.provider)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    if len(research_service.active_runs) >= settings.MAX_CONCURRENT_RUNS:
+        raise HTTPException(
+            status_code=429,
+            detail="The research desk is busy with other runs. Try again in a minute.",
+            headers={"Retry-After": "60"},
+        )
+
+    run = ResearchRun(query=query, provider=model_setting, status="pending", current_step="initialized")
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+
+    research_service.active_runs.add(run.id)
+    background_tasks.add_task(research_service.execute_research_run, run.id, run.query, model_setting)
+    return CreateResearchResponse(
+        run_id=run.id, status="pending", message="Research run initiated asynchronously."
+    )
+
+
+@router.get("/{run_id}")
+async def get_research_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await db.get(ResearchRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Research run not found")
+
+    plan = (await db.execute(select(ResearchPlan).where(ResearchPlan.run_id == run_id))).scalar_one_or_none()
+    sources_stmt = select(Source).where(Source.run_id == run_id).order_by(Source.created_at)
+    sources = (await db.execute(sources_stmt)).scalars().all()
+    report = (await db.execute(select(Report).where(Report.run_id == run_id))).scalar_one_or_none()
+    logs_stmt = select(AgentRunLog).where(AgentRunLog.run_id == run_id).order_by(AgentRunLog.timestamp.asc())
+    logs = (await db.execute(logs_stmt)).scalars().all()
+    return run_detail(run, plan, list(sources), list(logs), report, await count_versions(db, run_id))
+
+
+@router.delete("/{run_id}", status_code=204)
+async def delete_research_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await db.get(ResearchRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Research run not found")
+    if run_id in research_service.active_runs or run.status in ("pending", "running"):
+        raise HTTPException(
+            status_code=409, detail="This run is still in progress. Delete it once it has finished."
+        )
+    # Bulk deletes: ORM cascades would lazy-load each relationship, which async sessions cannot do.
+    for model in (ReportVersion, ChatMessage, Report, Source, AgentRunLog, ResearchPlan):
+        await db.execute(delete(model).where(model.run_id == run_id))
+    await db.execute(delete(ResearchRun).where(ResearchRun.id == run_id))
+    await db.commit()
+
+
+@router.post("/{run_id}/report/revert")
+async def revert_report_edit(run_id: str):
+    """Undo the latest chat edit of the report."""
+    try:
+        return await revert_report(run_id)
+    except RunNotFound as e:
+        raise HTTPException(status_code=404, detail="Research run not found") from e
+    except LookupError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+
 @router.get("/{run_id}/chat")
 async def get_research_chat(run_id: str):
-    from app.services.chat_service import get_chat_history
-    messages = await get_chat_history(run_id)
-    return {"run_id": run_id, "messages": messages}
-
-@router.post("/{run_id}/chat")
-async def post_research_chat(run_id: str, payload: ChatMessageRequest):
-    if not payload.message or not payload.message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty")
-        
-    from app.services.chat_service import process_followup_chat
     try:
-        res = await process_followup_chat(run_id, payload.message.strip())
-        return res
-    except ValueError as ve:
-        raise HTTPException(status_code=404, detail=str(ve))
+        return {"run_id": run_id, "messages": await get_chat_history(run_id)}
+    except RunNotFound as e:
+        raise HTTPException(status_code=404, detail="Research run not found") from e
+
+
+@router.post("/{run_id}/chat", dependencies=[Depends(limit_chat)])
+async def post_research_chat(run_id: str, payload: ChatMessageRequest):
+    message = _clean_text(payload.message, settings.MAX_CHAT_CHARS, "Message")
+    try:
+        return await process_followup_chat(run_id, message)
+    except RunNotFound as e:
+        raise HTTPException(status_code=404, detail="Research run not found") from e
+    except LLMUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:
-        logger.exception(f"Chat processing error for run {run_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Chat processing error for run %s", run_id)
+        raise HTTPException(
+            status_code=500, detail="The assistant could not answer. Please try again."
+        ) from e
+
 
 @router.get("/{run_id}/stream")
 async def stream_research_events(run_id: str):
+    """Replays every event so far, then streams live ones; closes after the run finishes."""
+    async with AsyncSessionLocal() as session:
+        run = await session.get(ResearchRun, run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Research run not found")
+        status, error = run.status, run.error_message
+
     queue = sse_manager.subscribe(run_id)
+    finished_without_history = status in ("completed", "failed") and not sse_manager.has_history(run_id)
 
     async def event_generator():
         try:
-            # Yield initial connection confirmation event
             yield {
                 "event": "connected",
-                "data": '{"message": "SSE Stream Connected", "run_id": "' + run_id + '"}'
+                "data": json.dumps({"message": "SSE Stream Connected", "run_id": run_id}),
             }
-
-            while True:
-                data = await queue.get()
+            if finished_without_history:  # e.g. after a server restart: report the stored outcome
+                event = "research_completed" if status == "completed" else "research_failed"
+                data = {"status": status, "run_id": run_id, "error": error}
                 yield {
                     "event": "message",
-                    "data": data
+                    "data": json.dumps({"event": event, "run_id": run_id, "data": data}),
                 }
-        except asyncio.CancelledError:
+                return
+            while True:
+                payload = await queue.get()
+                yield {"event": "message", "data": payload}
+                if is_terminal(payload):
+                    return
+        finally:
             sse_manager.unsubscribe(run_id, queue)
-            logger.info(f"SSE connection closed for run: {run_id}")
 
     return EventSourceResponse(event_generator())

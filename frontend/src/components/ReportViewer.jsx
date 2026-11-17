@@ -1,189 +1,194 @@
-import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { 
-  FileText, 
-  Download, 
-  Copy, 
-  Check, 
-  ExternalLink, 
-  ShieldCheck, 
-  MessageSquare,
-  BookOpen,
-  Sparkles
-} from 'lucide-react';
-import ReportChat from './ReportChat';
+import { Check, Copy, Download, ExternalLink, Undo2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { hostname, linkCitations } from '../lib/format';
+import { Markdown } from './Markdown';
+import { Button } from './ui/Button';
+import { Panel } from './ui/Panel';
+import { EmptyState } from './ui/States';
+import { Tabs } from './ui/Tabs';
 
-export default function ReportViewer({ 
-  report, 
-  sources = [], 
-  criticFeedback = '', 
-  runId, 
-  onReportUpdated, 
-  onNewChatTrigger 
-}) {
+function slug(text = 'research-report') {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 60) || 'research-report'
+  );
+}
+
+export default function ReportViewer({ report, sources = [], onUndo, undoBusy = false }) {
+  const [tab, setTab] = useState('report');
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState('report'); // 'report' | 'sources' | 'critic'
-  const [localReportContent, setLocalReportContent] = useState(null);
+  const [highlight, setHighlight] = useState(null);
+  const copyTimer = useRef();
+  const markdown = report?.full_markdown || '';
+
+  useEffect(() => () => clearTimeout(copyTimer.current), []);
+
+  useEffect(() => {
+    if (tab === 'sources' && highlight) {
+      document.getElementById(`source-${highlight}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, [tab, highlight]);
 
   if (!report) return null;
 
-  const currentMarkdown = localReportContent || (typeof report === 'string' ? report : report.full_markdown);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(currentMarkdown);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
   };
 
-  const handleDownload = () => {
-    const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
+  const exportMarkdown = () => {
+    const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `research_report_${Date.now()}.md`;
+    a.download = `${slug(report.title)}.md`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleReportUpdatedFromChat = (updatedMarkdown) => {
-    setLocalReportContent(updatedMarkdown);
-    if (onReportUpdated) {
-      onReportUpdated(updatedMarkdown);
-    }
+  const cite = (n) => {
+    setHighlight(n);
+    setTab('sources');
   };
 
+  const tabs = [
+    { id: 'report', label: 'Report' },
+    { id: 'sources', label: 'Sources', count: sources.length },
+    { id: 'critic', label: 'Critic notes' },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* REPORT VIEWER CARD */}
-      <div className="glass-panel rounded-3xl border border-white/10 overflow-hidden flex flex-col shadow-2xl">
-        {/* Header Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900/90 px-6 py-4 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-500 text-white shadow-lg shadow-cyan-500/20">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-white tracking-tight">Synthesized Research Report</h2>
-              <p className="text-xs text-slate-400">Verified by Multi-Agent Graph & Critic Review</p>
-            </div>
-          </div>
-
-          {/* Action Controls */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center rounded-xl bg-slate-950/80 p-1 border border-white/10 text-xs">
-              <button
-                onClick={() => setActiveTab('report')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-medium transition-all ${
-                  activeTab === 'report' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <FileText className="h-4 w-4" /> Full Report
-              </button>
-              <button
-                onClick={() => setActiveTab('sources')}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-medium transition-all ${
-                  activeTab === 'sources' ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <BookOpen className="h-4 w-4" /> Sources ({sources.length})
-              </button>
-              {criticFeedback && (
-                <button
-                  onClick={() => setActiveTab('critic')}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-medium transition-all ${
-                    activeTab === 'critic' ? 'bg-purple-500/20 text-purple-300 font-semibold' : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <MessageSquare className="h-4 w-4" /> Critic Log
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCopy}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-white/10 transition-colors"
-              >
-                {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-              <button
-                onClick={handleDownload}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white text-xs font-semibold shadow-md shadow-cyan-500/20 transition-all"
-              >
-                <Download className="h-4 w-4" /> Export MD
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Body Content */}
-        <div className="p-8 sm:p-10 overflow-y-auto max-h-[850px] bg-slate-950/40">
-          {activeTab === 'report' && (
-            <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {currentMarkdown}
-              </ReactMarkdown>
-            </div>
+    <Panel aria-label="Report">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule px-3 py-2">
+        <Tabs tabs={tabs} value={tab} onChange={setTab} idPrefix="report" label="Report views" />
+        <div className="flex items-center gap-1">
+          {report.version_count > 0 && onUndo && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onUndo}
+              disabled={undoBusy}
+              title="Restore the report as it was before the last chat edit"
+            >
+              <Undo2 aria-hidden className="h-3.5 w-3.5" /> Undo last edit
+            </Button>
           )}
-
-          {activeTab === 'sources' && (
-            <div className="space-y-4">
-              <h3 className="text-base font-bold text-white mb-4">Verified Sources & Citation Matrix</h3>
-              {sources.length === 0 ? (
-                <p className="text-sm text-slate-400 italic">No web sources cited in this run.</p>
-              ) : (
-                sources.map((src, i) => (
-                  <div key={i} className="glass-panel p-5 rounded-2xl border border-white/10 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-cyan-400 flex items-center gap-2">
-                        <ShieldCheck className="h-4 w-4 text-emerald-400" /> [{i + 1}] {src.title}
-                      </span>
-                      <span className="text-xs uppercase font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-semibold">
-                        {src.source_type || 'web'}
-                      </span>
-                    </div>
-                    <p className="text-sm text-slate-300 leading-relaxed">{src.snippet}</p>
-                    {src.url ? (
-                      <a
-                        href={src.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-bold mt-1"
-                      >
-                        {src.url} <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    ) : (
-                      <span className="text-xs text-slate-500 italic block mt-1">Source URL unavailable</span>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {activeTab === 'critic' && (
-            <div className="bg-purple-950/30 border border-purple-500/30 rounded-2xl p-6 space-y-3">
-              <div className="flex items-center gap-2 text-purple-300 font-bold text-base">
-                <MessageSquare className="h-5 w-5" /> Critic Reflection & Review Feedback
-              </div>
-              <p className="text-sm text-slate-200 leading-relaxed font-mono whitespace-pre-wrap">
-                {criticFeedback || report.critic_feedback || 'Critic approved report without additional revision requirements.'}
-              </p>
-            </div>
-          )}
+          <Button size="sm" variant="ghost" onClick={copy} aria-label="Copy report as Markdown">
+            {copied ? (
+              <Check aria-hidden className="h-3.5 w-3.5 text-verified" />
+            ) : (
+              <Copy aria-hidden className="h-3.5 w-3.5" />
+            )}
+            <span aria-live="polite">{copied ? 'Copied' : 'Copy'}</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={exportMarkdown}
+            aria-label="Export report as a Markdown file"
+          >
+            <Download aria-hidden className="h-3.5 w-3.5" /> Export .md
+          </Button>
         </div>
       </div>
 
-      {/* EMBEDDED REPORT FOLLOW-UP CHAT */}
-      {runId && (
-        <ReportChat 
-          runId={runId} 
-          onReportUpdated={handleReportUpdatedFromChat}
-          onNewChatTrigger={onNewChatTrigger}
-        />
-      )}
-    </div>
+      <div
+        id="report-panel"
+        role="tabpanel"
+        aria-labelledby={`report-tab-${tab}`}
+        className="px-4 py-6 md:px-8 md:py-8"
+      >
+        {tab === 'report' && (
+          <article className="report mx-auto">
+            <Markdown
+              components={{
+                a: ({ href = '', children }) => {
+                  const n = href.match(/^#source-(\d+)$/)?.[1];
+                  if (!n) {
+                    return (
+                      <a href={href} target="_blank" rel="noopener noreferrer">
+                        {children}
+                      </a>
+                    );
+                  }
+                  return (
+                    <a
+                      href={href}
+                      className="cite"
+                      aria-label={`Source ${n}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        cite(Number(n));
+                      }}
+                    >
+                      {n}
+                    </a>
+                  );
+                },
+              }}
+            >
+              {linkCitations(markdown)}
+            </Markdown>
+          </article>
+        )}
+
+        {tab === 'sources' &&
+          (sources.length === 0 ? (
+            <EmptyState title="No sources were saved for this run.">
+              Search found nothing, so the report could not cite anything.
+            </EmptyState>
+          ) : (
+            <ol className="mx-auto max-w-[68ch] divide-y divide-rule">
+              {sources.map((s, i) => (
+                <li
+                  key={s.id || s.url}
+                  id={`source-${i + 1}`}
+                  className={`flex scroll-mt-24 gap-3 rounded-control py-3 transition-colors duration-500 ${
+                    highlight === i + 1 ? 'bg-accent-soft px-2' : ''
+                  }`}
+                >
+                  <span className="w-7 shrink-0 pt-0.5 font-mono text-xs text-ink-3 tabular-nums">
+                    [{i + 1}]
+                  </span>
+                  <div className="min-w-0">
+                    {s.url ? (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group inline-flex items-start gap-1 font-medium text-ink hover:text-accent"
+                      >
+                        <span className="[overflow-wrap:anywhere]">{s.title}</span>
+                        <ExternalLink aria-hidden className="mt-1 h-3.5 w-3.5 shrink-0 text-ink-4" />
+                        <span className="sr-only">(opens in a new tab)</span>
+                      </a>
+                    ) : (
+                      <p className="font-medium text-ink">{s.title}</p>
+                    )}
+                    <p className="text-xs text-ink-3">
+                      {[hostname(s.url), s.source_type].filter(Boolean).join(' · ')}
+                    </p>
+                    {s.snippet && <p className="mt-1 line-clamp-3 text-sm text-ink-2">{s.snippet}</p>}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ))}
+
+        {tab === 'critic' && (
+          <p className="mx-auto max-w-[68ch] text-sm whitespace-pre-wrap text-ink">
+            {report.critic_feedback || 'The critic left no notes.'}
+          </p>
+        )}
+      </div>
+    </Panel>
   );
 }
