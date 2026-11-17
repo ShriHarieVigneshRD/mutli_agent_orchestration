@@ -1,173 +1,149 @@
-import React, { useEffect, useState } from 'react';
-import { getResearchHistory, getResearchRun } from '../lib/api';
-import { History, FileText, CheckCircle2, AlertTriangle, Clock, Search, Bot } from 'lucide-react';
-import AgentInspector from '../components/AgentInspector';
+import { History, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { RunRow } from '../components/RunList';
+import { Button } from '../components/ui/Button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { Panel } from '../components/ui/Panel';
+import { EmptyState, ErrorNotice, Skeleton } from '../components/ui/States';
+import { deleteResearchRun, getResearchHistory } from '../lib/api';
+
+const PAGE = 20;
 
 export default function HistoryPage() {
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedRun, setSelectedRun] = useState(null);
-  const [agentLogs, setAgentLogs] = useState({});
-  const [selectedReport, setSelectedReport] = useState(null);
-  const [sources, setSources] = useState([]);
+  const [runs, setRuns] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [status, setStatus] = useState('loading'); // loading | ready | more | error
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [toDelete, setToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const fetchPage = (offset) =>
+    getResearchHistory({ limit: PAGE, offset }).then(
+      (page) => {
+        setRuns((prev) => (offset ? [...prev, ...page.runs] : page.runs));
+        setTotal(page.total);
+        setStatus('ready');
+      },
+      (e) => {
+        setError(e.message);
+        setStatus('error');
+      },
+    );
+
+  const load = (offset = 0) => {
+    setStatus(offset ? 'more' : 'loading');
+    setError('');
+    fetchPage(offset);
+  };
 
   useEffect(() => {
-    fetchHistory();
+    fetchPage(0);
   }, []);
 
-  const fetchHistory = async () => {
-    setLoading(true);
+  const confirmDelete = async () => {
+    setDeleting(true);
+    setDeleteError('');
     try {
-      const data = await getResearchHistory();
-      setHistory(data.runs);
-    } catch (err) {
-      console.error('Failed to fetch history:', err);
+      await deleteResearchRun(toDelete.id);
+      setRuns((prev) => prev.filter((r) => r.id !== toDelete.id));
+      setTotal((t) => t - 1);
+      setToDelete(null);
+    } catch (e) {
+      setDeleteError(e.message);
+      setToDelete(null);
     } finally {
-      setLoading(false);
+      setDeleting(false);
     }
   };
 
-  const handleSelectRun = async (runId) => {
-    try {
-      const data = await getResearchRun(runId);
-      setSelectedRun(data);
-      if (data.report) {
-        setSelectedReport(data.report);
-      } else {
-        setSelectedReport(null);
-      }
-      setSources(data.sources || []);
-
-      if (data.logs) {
-        const map = {};
-        data.logs.forEach((l) => {
-          if (l.details) map[l.agent_name] = l.details;
-        });
-        setAgentLogs(map);
-      }
-    } catch (err) {
-      console.error('Error fetching run details:', err);
-    }
-  };
-
-  const filteredHistory = history.filter((h) => h.query.toLowerCase().includes(searchTerm.toLowerCase()));
+  const needle = search.trim().toLowerCase();
+  const visible = needle ? runs.filter((r) => r.query.toLowerCase().includes(needle)) : runs;
 
   return (
-    <div className="mx-auto w-full max-w-[1700px] px-6 sm:px-10 py-8 space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-5">
+    <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-12">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <History className="h-8 w-8 text-purple-400" /> Research History & Multi-Agent Archive
+          <h1 className="font-serif text-3xl font-semibold tracking-tight text-ink max-md:text-2xl">
+            History
           </h1>
-          <p className="text-base text-slate-300">
-            View, inspect, and audit past multi-agent execution outputs
+          <p className="mt-1 text-sm text-ink-3">
+            {status === 'loading' ? 'Loading…' : `${total} research run${total === 1 ? '' : 's'}`}
           </p>
         </div>
-
-        {/* Search Input */}
-        <div className="relative w-full sm:w-96">
-          <Search className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
+        <div className="relative w-full sm:w-72">
+          <label htmlFor="history-search" className="sr-only">
+            Search loaded runs
+          </label>
+          <Search
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-ink-3"
+          />
           <input
-            type="text"
-            placeholder="Search past research queries..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-2xl bg-slate-900/90 pl-11 pr-4 py-3 text-sm text-white placeholder-slate-500 border border-white/15 focus:border-cyan-500 focus:outline-none"
+            id="history-search"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search questions…"
+            className="h-9 w-full rounded-control border border-rule-strong bg-well pr-3 pl-8 text-sm text-ink placeholder:text-ink-4 max-md:h-11 max-md:text-base"
           />
         </div>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* ChatGPT Style Runs Sidebar */}
-        <div className="lg:col-span-1 glass-panel rounded-3xl p-6 border border-white/10 space-y-4 max-h-[800px] overflow-y-auto shadow-2xl">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-white/10 pb-3">
-            Past Research Runs ({filteredHistory.length})
-          </h3>
+      <ErrorNotice className="mb-4" message={deleteError} />
 
-          {loading ? (
-            <p className="text-sm text-slate-400 italic p-4 text-center">Loading research history...</p>
-          ) : filteredHistory.length === 0 ? (
-            <p className="text-sm text-slate-400 italic p-4 text-center">No research runs recorded yet.</p>
-          ) : (
-            filteredHistory.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => handleSelectRun(item.id)}
-                className={`w-full text-left p-4 rounded-2xl border transition-all ${
-                  selectedRun?.id === item.id
-                    ? 'bg-cyan-950/40 border-cyan-500/60 shadow-lg shadow-cyan-500/10'
-                    : 'bg-slate-900/50 border-white/5 hover:border-white/20'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs uppercase font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-semibold">
-                    {item.provider}
-                  </span>
-                  {item.status === 'completed' ? (
-                    <span className="flex items-center gap-1 text-xs text-emerald-400 font-semibold">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Completed
-                    </span>
-                  ) : item.status === 'failed' ? (
-                    <span className="flex items-center gap-1 text-xs text-rose-400 font-semibold">
-                      <AlertTriangle className="h-3.5 w-3.5" /> Failed
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-cyan-400 font-semibold">
-                      <Clock className="h-3.5 w-3.5 animate-spin" /> {item.status}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm font-semibold text-slate-100 line-clamp-2 leading-relaxed">
-                  {item.query}
-                </p>
-                <span className="text-xs text-slate-400 block mt-2 font-mono">
-                  {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
-                </span>
-              </button>
-            ))
-          )}
-        </div>
+      <Panel>
+        {status === 'loading' ? (
+          <Skeleton className="p-4" lines={6} />
+        ) : status === 'error' && runs.length === 0 ? (
+          <ErrorNotice className="m-3" message={error} onRetry={() => load()} />
+        ) : runs.length === 0 ? (
+          <EmptyState
+            icon={History}
+            title="No research yet"
+            action={
+              <Button as={Link} to="/" variant="primary">
+                Start your first run
+              </Button>
+            }
+          >
+            Every run you start is kept here with its report, sources and chat.
+          </EmptyState>
+        ) : visible.length === 0 ? (
+          <EmptyState icon={Search} title={`Nothing matches “${search.trim()}”`}>
+            Only the {runs.length} loaded runs are searched.
+          </EmptyState>
+        ) : (
+          <ul className="divide-y divide-rule">
+            {visible.map((run) => (
+              <RunRow key={run.id} run={run} onDelete={setToDelete} />
+            ))}
+          </ul>
+        )}
+      </Panel>
 
-        {/* Selected Run Agent Inspector */}
-        <div className="lg:col-span-2">
-          {selectedRun ? (
-            <AgentInspector
-              query={selectedRun.query}
-              status={selectedRun.status}
-              completedNodes={[
-                'planner',
-                'researcher',
-                'data_analyst',
-                'news_agent',
-                'verifier',
-                'writer',
-                'critic',
-              ]}
-              agentLogs={agentLogs}
-              sources={sources}
-              report={selectedReport}
-              criticFeedback={selectedReport?.critic_feedback || ''}
-              revisionCount={selectedRun.revision_count || 0}
-              runId={selectedRun.id}
-              onReportUpdated={(updatedMd) =>
-                setSelectedReport((prev) => ({ ...(prev || {}), full_markdown: updatedMd }))
-              }
-            />
-          ) : (
-            <div className="glass-panel rounded-3xl p-16 border border-white/10 text-center space-y-4">
-              <Bot className="h-14 w-14 text-cyan-400/80 mx-auto" />
-              <h3 className="text-lg font-bold text-white">Select a research run to inspect agent outputs</h3>
-              <p className="text-sm text-slate-400 max-w-md mx-auto">
-                Inspect past multi-agent execution steps, task planning, verified sources, and critic
-                reflection logs.
-              </p>
-            </div>
-          )}
+      {status === 'error' && runs.length > 0 && <ErrorNotice className="mt-4" message={error} />}
+      {runs.length < total && status !== 'loading' && (
+        <div className="mt-4 flex justify-center">
+          <Button onClick={() => load(runs.length)} disabled={status === 'more'}>
+            {status === 'more' ? 'Loading…' : `Load more (${total - runs.length} older)`}
+          </Button>
         </div>
-      </div>
+      )}
+
+      <ConfirmDialog
+        open={Boolean(toDelete)}
+        title="Delete this run?"
+        confirmLabel={deleting ? 'Deleting…' : 'Delete run'}
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setToDelete(null)}
+      >
+        <p className="line-clamp-3">“{toDelete?.query}”</p>
+        <p className="mt-2">Its report, sources and chat are deleted too. This cannot be undone.</p>
+      </ConfirmDialog>
     </div>
   );
 }

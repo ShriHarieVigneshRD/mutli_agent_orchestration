@@ -26,6 +26,7 @@ describe('ReportChat', () => {
       chat_response: 'Updated the summary.',
       is_report_modified: true,
       updated_report_markdown: '# New report',
+      version_count: 1,
     });
     const onReportUpdated = vi.fn();
     render(<ReportChat runId="r1" onReportUpdated={onReportUpdated} />);
@@ -38,7 +39,7 @@ describe('ReportChat', () => {
     expect(await screen.findByText('Updated the summary.')).toBeInTheDocument();
     expect(screen.getByText('Add risks')).toBeInTheDocument();
     expect(api.sendReportChatMessage).toHaveBeenCalledWith('r1', 'Add risks');
-    await waitFor(() => expect(onReportUpdated).toHaveBeenCalledWith('# New report'));
+    await waitFor(() => expect(onReportUpdated).toHaveBeenCalledWith('# New report', 1));
     expect(screen.getByText(/Report updated/i)).toBeInTheDocument();
   });
 

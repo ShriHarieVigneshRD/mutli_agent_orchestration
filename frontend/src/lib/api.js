@@ -1,85 +1,82 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-export async function createResearchRun(query, provider = 'groq') {
-  const response = await fetch(`${API_BASE_URL}/api/research`, {
+/** fetch + JSON with the API's `detail` message on errors. */
+async function request(path, init) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, init);
+  } catch {
+    throw new Error('Cannot reach the research server. Check your connection and try again.');
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(
+      typeof body.detail === 'string' ? body.detail : `Request failed (${response.status}).`,
+    );
+    error.status = response.status;
+    throw error;
+  }
+  return body;
+}
+
+const postJson = (path, payload) =>
+  request(path, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ query, provider }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || 'Failed to initiate research run');
-  }
-  return response.json();
-}
 
-export async function getResearchRun(runId) {
-  const response = await fetch(`${API_BASE_URL}/api/research/${runId}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch research run details');
-  }
-  return response.json();
-}
-
-export async function getResearchHistory() {
-  const response = await fetch(`${API_BASE_URL}/api/history`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch research history');
-  }
-  return response.json();
-}
-
-export async function getReportById(reportId) {
-  const response = await fetch(`${API_BASE_URL}/api/history/reports/${reportId}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch report');
-  }
-  return response.json();
-}
-
-export async function getReportChat(runId) {
-  const response = await fetch(`${API_BASE_URL}/api/research/${runId}/chat`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch chat history');
-  }
-  return response.json();
-}
-
-export async function sendReportChatMessage(runId, message) {
-  const response = await fetch(`${API_BASE_URL}/api/research/${runId}/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ message }),
+/** `models` is { mode: 'per_agent' | 'single', model?: string }. */
+export function createResearchRun(query, models = { mode: 'per_agent' }) {
+  return postJson('/api/research', {
+    query,
+    model_mode: models.mode,
+    model: models.mode === 'single' ? models.model : undefined,
   });
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || 'Failed to send chat message');
-  }
-  return response.json();
 }
 
-export function subscribeToRunEvents(runId, onEvent, onError) {
-  const eventSource = new EventSource(`${API_BASE_URL}/api/research/${runId}/stream`);
+export const getResearchRun = (runId) => request(`/api/research/${runId}`);
 
-  eventSource.onmessage = (event) => {
+export const getResearchHistory = ({ limit = 20, offset = 0 } = {}) =>
+  request(`/api/history?limit=${limit}&offset=${offset}`);
+
+export const deleteResearchRun = (runId) => request(`/api/research/${runId}`, { method: 'DELETE' });
+
+export const getModels = () => request('/api/models');
+
+export const getReportChat = (runId) => request(`/api/research/${runId}/chat`);
+
+export const sendReportChatMessage = (runId, message) => postJson(`/api/research/${runId}/chat`, { message });
+
+export const revertReport = (runId) => postJson(`/api/research/${runId}/report/revert`, {});
+
+/**
+ * Live run events. The server replays everything sent so far on every (re)connect, so `onReset`
+ * fires on each `connected` event and the caller should drop what it had before the replay.
+ * Returns a function that closes the stream.
+ */
+export function subscribeToRunEvents(runId, { onEvent, onReset, onStatus } = {}) {
+  const source = new EventSource(`${API_BASE_URL}/api/research/${runId}/stream`);
+
+  source.addEventListener('connected', () => {
+    onReset?.();
+    onStatus?.('live');
+  });
+  source.onmessage = (event) => {
     try {
       const parsed = JSON.parse(event.data);
-      onEvent(parsed);
-    } catch (err) {
-      console.error('SSE JSON parse error:', err, event.data);
+      onEvent?.(parsed);
+      if (parsed.event === 'research_completed' || parsed.event === 'research_failed') {
+        source.close();
+        onStatus?.('closed');
+      }
+    } catch {
+      // A malformed frame is skipped; the next replay or the final refetch restores state.
     }
   };
-
-  eventSource.onerror = (err) => {
-    console.warn('SSE EventSource error:', err);
-    if (onError) onError(err);
+  source.onerror = () => {
+    onStatus?.(source.readyState === EventSource.CLOSED ? 'closed' : 'reconnecting');
   };
 
-  return () => {
-    eventSource.close();
-  };
+  return () => source.close();
 }

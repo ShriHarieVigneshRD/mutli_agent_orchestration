@@ -1,18 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { FileCheck2, Loader2, MessageSquare, Send } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import {
-  MessageSquare,
-  Send,
-  Loader2,
-  Bot,
-  User,
-  Sparkles,
-  PlusCircle,
-  FileEdit,
-  AlertCircle,
-} from 'lucide-react';
 import { getReportChat, sendReportChatMessage } from '../lib/api';
+import { shortModel } from '../lib/format';
+import { Button } from './ui/Button';
+import { Panel, PanelHeader } from './ui/Panel';
+import { ErrorNotice } from './ui/States';
 
 const PRESET_PROMPTS = [
   'Explain the final recommendation in simpler terms.',
@@ -22,199 +16,134 @@ const PRESET_PROMPTS = [
   'Summarize this report into 5 bullet points for leadership.',
 ];
 
-export default function ReportChat({ runId, onReportUpdated, onNewChatTrigger }) {
+/** Follow-up questions about the report; the assistant can also rewrite the report on request.
+ * Render with key={runId} so switching runs starts a fresh conversation. */
+export default function ReportChat({ runId, onReportUpdated }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-  const [reportModifiedBanner, setReportModifiedBanner] = useState(false);
-
-  const chatBottomRef = useRef(null);
+  const [reportModified, setReportModified] = useState(false);
+  const bottomRef = useRef(null);
+  const nextId = useRef(0);
 
   useEffect(() => {
     if (!runId) return;
-    setMessages([]);
-    fetchHistory();
+    let cancelled = false;
+    getReportChat(runId)
+      .then((data) => {
+        // Keep anything sent while the history was loading (B26).
+        if (!cancelled) setMessages((prev) => [...(data.messages || []), ...prev]);
+      })
+      .catch((e) => !cancelled && setHistoryError(e.message));
+    return () => {
+      cancelled = true;
+    };
   }, [runId]);
 
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length) bottomRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [messages]);
 
-  const fetchHistory = async () => {
-    try {
-      const data = await getReportChat(runId);
-      if (data.messages) {
-        // Keep anything sent while the history was loading (B26).
-        setMessages((prev) => [...data.messages, ...prev]);
-      }
-    } catch (err) {
-      console.error('Failed to load chat history:', err);
-    }
-  };
+  const localMessage = (role, content, extra) => ({
+    id: `local-${nextId.current++}`,
+    role,
+    content,
+    ...extra,
+  });
 
-  const handleSend = async (messageToSend) => {
-    const text = messageToSend || input;
-    if (!text || !text.trim() || loading) return;
-
-    const userMsgText = text.trim();
+  const handleSend = async (preset) => {
+    const text = (preset ?? input).trim();
+    if (!text || loading) return;
     setInput('');
     setErrorMsg('');
-    setReportModifiedBanner(false);
-
-    // Optimistic UI update
-    const tempUserMsg = { id: `temp-${Date.now()}`, role: 'user', content: userMsgText };
-    setMessages((prev) => [...prev, tempUserMsg]);
+    setReportModified(false);
+    setMessages((prev) => [...prev, localMessage('user', text)]);
     setLoading(true);
-
     try {
-      const res = await sendReportChatMessage(runId, userMsgText);
-
-      const assistantMsg = {
-        id: `ast-${Date.now()}`,
-        role: 'assistant',
-        content: res.chat_response,
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-
-      // If report was modified, trigger callback to update UI report view
+      const res = await sendReportChatMessage(runId, text);
+      setMessages((prev) => [
+        ...prev,
+        localMessage('assistant', res.chat_response, { model: res.model_used }),
+      ]);
       if (res.is_report_modified && res.updated_report_markdown) {
-        setReportModifiedBanner(true);
-        if (onReportUpdated) {
-          onReportUpdated(res.updated_report_markdown);
-        }
+        setReportModified(true);
+        onReportUpdated?.(res.updated_report_markdown, res.version_count);
       }
     } catch (err) {
-      console.error('Failed to send follow-up message:', err);
-      setErrorMsg(err.message || 'Failed to generate follow-up response.');
+      setErrorMsg(err.message || 'The assistant could not answer.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="glass-panel rounded-3xl border border-white/10 overflow-hidden shadow-2xl flex flex-col mt-8">
-      {/* HEADER */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900/90 px-6 py-4 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/20">
-            <MessageSquare className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-              Report Follow-up & Interactive Editing
-            </h3>
-            <p className="text-xs text-slate-400">Ask clarifying questions or request report modifications</p>
-          </div>
-        </div>
+    <Panel aria-labelledby="chat-title">
+      <PanelHeader
+        id="chat-title"
+        title="Ask about this report"
+        subtitle="Questions use the report and its sources. Ask for an edit and the report is rewritten."
+      />
 
-        {onNewChatTrigger && (
-          <button
-            onClick={onNewChatTrigger}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold border border-white/10 shadow-sm transition-all"
-          >
-            <PlusCircle className="h-4 w-4" /> New Research Query
-          </button>
-        )}
-      </div>
-
-      {/* REPORT MODIFIED NOTIFICATION BANNER */}
-      {reportModifiedBanner && (
-        <div className="bg-emerald-950/80 border-b border-emerald-500/40 p-3 px-6 flex items-center gap-2 text-emerald-300 text-xs font-semibold">
-          <FileEdit className="h-4 w-4 text-emerald-400 shrink-0" />
-          <span>Report updated successfully! The modified content has been applied to the view above.</span>
-        </div>
+      {reportModified && (
+        <p
+          role="status"
+          className="flex items-center gap-2 border-b border-rule bg-verified-soft px-4 py-2 text-sm text-ink"
+        >
+          <FileCheck2 aria-hidden className="h-4 w-4 text-verified" />
+          Report updated. Use “Undo last edit” above to restore the previous version.
+        </p>
       )}
 
-      {/* CHAT MESSAGES CONTAINER */}
-      <div className="p-6 sm:p-8 overflow-y-auto max-h-[500px] min-h-[250px] space-y-4 bg-slate-950/60">
-        {messages.length === 0 ? (
-          <div className="text-center py-6 space-y-3">
-            <Sparkles className="h-8 w-8 text-purple-400 mx-auto" />
-            <p className="text-sm font-semibold text-slate-300">Have questions about this research report?</p>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Ask questions to clarify findings, request simplifications, or ask to modify specific sections
-              of the report.
-            </p>
+      <div className="max-h-[28rem] min-h-40 space-y-4 overflow-y-auto px-4 py-4" aria-live="polite">
+        <ErrorNotice message={historyError} />
+        {messages.length === 0 && !historyError && (
+          <div className="flex flex-col items-center gap-1 py-6 text-center">
+            <MessageSquare aria-hidden className="h-5 w-5 text-ink-4" />
+            <p className="text-sm text-ink-3">No questions yet. Try a suggestion below.</p>
           </div>
-        ) : (
-          messages.map((m) => (
-            <div
-              key={m.id}
-              className={`flex items-start gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              {m.role === 'assistant' && (
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shrink-0 mt-1 shadow-md">
-                  <Bot className="h-4.5 w-4.5" />
-                </div>
-              )}
-
-              <div
-                className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed ${
-                  m.role === 'user'
-                    ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white rounded-tr-none shadow-lg'
-                    : 'glass-panel bg-slate-900/90 text-slate-100 rounded-tl-none border border-white/10 shadow-md'
-                }`}
-              >
-                {m.role === 'assistant' ? (
-                  <div className="markdown-content text-sm">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
-                  </div>
-                ) : (
-                  <p className="whitespace-pre-wrap">{m.content}</p>
-                )}
+        )}
+        {messages.map((m) =>
+          m.role === 'user' ? (
+            <div key={m.id} className="flex justify-end">
+              <p className="max-w-[85%] rounded-panel bg-well px-3 py-2 text-sm whitespace-pre-wrap text-ink">
+                {m.content}
+              </p>
+            </div>
+          ) : (
+            <div key={m.id} className="max-w-[92%]">
+              <div className="report report-compact text-ink">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
               </div>
-
-              {m.role === 'user' && (
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-600 text-white shrink-0 mt-1 shadow-md">
-                  <User className="h-4.5 w-4.5" />
-                </div>
-              )}
+              {m.model && <p className="mt-1 font-mono text-xs text-ink-4">{shortModel(m.model)}</p>}
             </div>
-          ))
+          ),
         )}
-
         {loading && (
-          <div className="flex items-center gap-3 justify-start">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shrink-0">
-              <Bot className="h-4.5 w-4.5 animate-spin" />
-            </div>
-            <div className="glass-panel bg-slate-900/80 px-4 py-3 rounded-2xl border border-white/10 text-xs text-slate-300 flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-cyan-400" /> Analyzing report context...
-            </div>
-          </div>
+          <p className="flex items-center gap-2 text-sm text-ink-3">
+            <Loader2 aria-hidden className="h-4 w-4 animate-spin" /> Reading the report…
+          </p>
         )}
-
-        {errorMsg && (
-          <div className="rounded-xl bg-rose-950/40 border border-rose-500/30 p-3 text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0" /> {errorMsg}
-          </div>
-        )}
-
-        <div ref={chatBottomRef} />
+        <ErrorNotice message={errorMsg} />
+        <div ref={bottomRef} />
       </div>
 
-      {/* PRESET CHIPS & INPUT CONTAINER */}
-      <div className="p-4 bg-slate-900/90 border-t border-white/10 space-y-3">
-        {/* Preset Chips */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-slate-400 font-semibold flex items-center gap-1">
-            <Sparkles className="h-3.5 w-3.5 text-purple-400" /> Suggested:
-          </span>
-          {PRESET_PROMPTS.map((promptText, idx) => (
-            <button
-              key={idx}
-              type="button"
-              disabled={loading}
-              onClick={() => handleSend(promptText)}
-              className="px-3 py-1 rounded-xl bg-slate-800/90 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-xs border border-white/10 transition-all text-left"
-            >
-              {promptText}
-            </button>
+      <div className="space-y-3 border-t border-rule px-4 py-3">
+        <ul className="flex flex-wrap gap-1.5" aria-label="Suggested questions">
+          {PRESET_PROMPTS.map((p) => (
+            <li key={p}>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleSend(p)}
+                className="rounded-control border border-rule px-2.5 py-1 text-left text-xs text-ink-2 transition-colors duration-150 hover:border-rule-strong hover:text-ink disabled:opacity-50 max-md:py-2"
+              >
+                {p}
+              </button>
+            </li>
           ))}
-        </div>
-
-        {/* Form Input */}
+        </ul>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -222,23 +151,34 @@ export default function ReportChat({ runId, onReportUpdated, onNewChatTrigger })
           }}
           className="flex items-center gap-2"
         >
+          <label htmlFor="chat-input" className="sr-only">
+            Follow-up question
+          </label>
           <input
+            id="chat-input"
             type="text"
             value={input}
+            maxLength={2000}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading}
-            placeholder="Ask a follow-up question or request report edits..."
-            className="flex-1 bg-slate-950 text-sm text-white placeholder-slate-500 px-4 py-3 rounded-2xl border border-white/15 focus:outline-none focus:border-purple-500 shadow-inner"
+            placeholder="Ask a follow-up question or request a report edit…"
+            className="h-9 min-w-0 flex-1 rounded-control border border-rule-strong bg-well px-3 text-sm text-ink placeholder:text-ink-4 max-md:h-11 max-md:text-base"
           />
-          <button
+          <Button
             type="submit"
+            variant="primary"
+            size="icon"
             disabled={!input.trim() || loading}
-            className="flex items-center justify-center h-11 w-11 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 disabled:opacity-50 text-white shadow-lg shadow-purple-500/20 transition-all shrink-0"
+            aria-label="Send"
           >
-            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-          </button>
+            {loading ? (
+              <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send aria-hidden className="h-4 w-4" />
+            )}
+          </Button>
         </form>
       </div>
-    </div>
+    </Panel>
   );
 }

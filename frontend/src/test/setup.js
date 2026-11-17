@@ -9,3 +9,11 @@ afterEach(() => {
 
 // jsdom has no scrollIntoView; components call it after new chat messages.
 Element.prototype.scrollIntoView = () => {};
+
+// jsdom has no modal <dialog>; enough of it for ConfirmDialog.
+HTMLDialogElement.prototype.showModal = function showModal() {
+  this.open = true;
+};
+HTMLDialogElement.prototype.close = function close() {
+  this.open = false;
+};
