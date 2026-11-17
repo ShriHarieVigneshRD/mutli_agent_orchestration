@@ -51,7 +51,7 @@ describe('ReportChat', () => {
     expect(await screen.findByText('Rate limited')).toBeInTheDocument();
   });
 
-  it.fails('B26: keeps messages sent before the history finishes loading', async () => {
+  it('B26: keeps messages sent before the history finishes loading', async () => {
     let resolveHistory;
     api.getReportChat.mockReturnValue(new Promise((r) => (resolveHistory = r)));
     api.sendReportChatMessage.mockResolvedValue({ chat_response: 'Reply', is_report_modified: false });

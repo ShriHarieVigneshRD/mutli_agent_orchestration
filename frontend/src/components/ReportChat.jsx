@@ -33,6 +33,7 @@ export default function ReportChat({ runId, onReportUpdated, onNewChatTrigger })
 
   useEffect(() => {
     if (!runId) return;
+    setMessages([]);
     fetchHistory();
   }, [runId]);
 
@@ -44,7 +45,8 @@ export default function ReportChat({ runId, onReportUpdated, onNewChatTrigger })
     try {
       const data = await getReportChat(runId);
       if (data.messages) {
-        setMessages(data.messages);
+        // Keep anything sent while the history was loading (B26).
+        setMessages((prev) => [...data.messages, ...prev]);
       }
     } catch (err) {
       console.error('Failed to load chat history:', err);

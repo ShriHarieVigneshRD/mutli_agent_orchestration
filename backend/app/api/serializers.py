@@ -1,13 +1,17 @@
 """DB rows → JSON-ready dicts, shared by the API routes."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.db.models import AgentRunLog, Report, ResearchPlan, ResearchRun, Source
 
 
 def iso(dt: datetime | None) -> str | None:
-    return dt.isoformat() if dt else None
+    """UTC ISO-8601 with a Z suffix. Stored datetimes are naive UTC; without the suffix browsers read
+    them as local time (5 h 30 m off in India)."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
 
 
 def report_to_dict(report: Report) -> dict[str, Any]:

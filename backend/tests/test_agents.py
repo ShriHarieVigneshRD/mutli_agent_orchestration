@@ -1,4 +1,4 @@
-"""Characterization tests for the graph, nodes, tools and SSE manager (F9–F17)."""
+"""Graph, nodes, tools and SSE manager: characterization of F9-F17 plus regression tests."""
 
 import asyncio
 
@@ -7,11 +7,12 @@ from langgraph.graph import END
 
 from app.agent import nodes, tools
 from app.agent.graph import route_after_critic
+from app.agent.llm import LLMUnavailable, extract_text, parse_json_from_llm
 from app.services.sse_manager import SSEManager
 
 STATE = {
     "query": "Impact of solar panels on household electricity costs",
-    "provider": "openrouter/free",
+    "provider": "per-agent",
     "run_id": "t",
     "plan": None,
     "research_findings": [],
@@ -20,53 +21,66 @@ STATE = {
     "agent_outputs": {},
     "verified_evidence": [],
     "unsupported_claims": [],
-    "draft_report": "",
+    "draft_report": "# Draft",
     "critic_decision": "",
     "critic_feedback": "",
     "revision_count": 0,
-    "max_revisions": 2,
+    "max_revisions": 1,
     "final_report": "",
     "current_node": "initialized",
     "error": None,
 }
 
 
+def state(**overrides):
+    return {**STATE, **overrides}
+
+
 # ---- routing / reflection loop (F9, F16)
 
 
-@pytest.mark.parametrize(
-    ("decision", "count", "expected"),
-    [("APPROVE", 0, END), ("REVISE", 0, "writer"), ("REVISE", 1, "writer"), ("REVISE", 2, END)],
-)
-def test_route_after_critic(decision, count, expected):
-    assert (
-        route_after_critic({"critic_decision": decision, "revision_count": count, "max_revisions": 2})
-        == expected
-    )
+@pytest.mark.parametrize(("decision", "expected"), [("APPROVE", END), ("REVISE", "writer")])
+def test_route_after_critic_follows_the_critic(decision, expected):
+    assert route_after_critic(state(critic_decision=decision)) == expected
 
 
-def test_critic_revise_loop_runs_writer_twice_then_forces_approve(client, make_run, llm):
+def test_critic_revise_loop_respects_max_revisions(client, make_run, llm):
     llm.replies["critic"] = {"decision": "REVISE", "feedback": "Add more numbers."}
     run = client.get(f"/api/research/{make_run()}").json()
-    assert llm.calls.count("writer") == 2
-    assert llm.calls.count("critic") == 2
+    assert llm.calls.count("writer") == 2  # MAX_REVISIONS=1: one draft + one rewrite (same as before)
     assert run["status"] == "completed"
-    assert "Maximum revision threshold" in run["report"]["critic_feedback"]
+    assert "Revision limit of 1 reached" in run["report"]["critic_feedback"]
 
 
-def test_writer_receives_critic_feedback_on_revision(client, make_run, llm, monkeypatch):
-    seen = []
-    original = llm.invoke_legacy
+def test_max_revisions_means_rewrites_allowed(client, make_run, llm, monkeypatch):
+    """B14: max_revisions=2 used to allow only one rewrite."""
+    from app.config import settings
 
-    def spy(provider, messages, temperature=0.2):
-        if "Research Writer" in messages[0].content:
-            seen.append(messages[1].content)
-        return original(provider, messages, temperature)
+    monkeypatch.setattr(settings, "MAX_REVISIONS", 2)
+    llm.replies["critic"] = {"decision": "REVISE", "feedback": "More."}
+    make_run()
+    assert llm.calls.count("writer") == 3
 
-    monkeypatch.setattr(nodes, "invoke_llm_with_fallback", spy)
+
+def test_writer_receives_critic_feedback_on_revision(make_run, llm):
     llm.replies["critic"] = [{"decision": "REVISE", "feedback": "Cite the savings."}, {"decision": "APPROVE"}]
     make_run()
-    assert "Cite the savings." in seen[1]
+    assert "Cite the savings." in llm.messages["writer"][1][1].content
+
+
+@pytest.mark.parametrize("decision", ["Approved", "approve.", "LGTM", ""])
+def test_critic_treats_anything_but_revise_as_approval(llm, decision):
+    llm.replies["critic"] = {"decision": decision, "feedback": "ok"}
+    out = nodes.critic_node(state())
+    assert out["critic_decision"] == "APPROVE" and out["final_report"] == "# Draft"
+
+
+def test_critic_outage_approves_honestly(llm):
+    llm.replies["critic"] = LLMUnavailable("ALL_FAILED")
+    out = nodes.critic_node(state())
+    assert out["critic_decision"] == "APPROVE"
+    assert "Critic unavailable" in out["critic_feedback"]
+    assert out["agent_outputs"]["critic"]["status"] == "degraded"
 
 
 # ---- planner (F10)
@@ -74,27 +88,52 @@ def test_writer_receives_critic_feedback_on_revision(client, make_run, llm, monk
 
 def test_planner_falls_back_to_default_plan_on_bad_json(llm):
     llm.replies["planner"] = "not json"
-    plan = nodes.planner_node(dict(STATE))["plan"]
-    assert plan["agents_required"] == ["researcher", "data_analyst", "news_agent"]
-    assert len(plan["tasks"]) == 3
+    out = nodes.planner_node(state())
+    assert out["plan"]["agents_required"] == ["researcher", "data_analyst", "news_agent"]
+    assert len(out["plan"]["tasks"]) == 3
+    assert out["agent_outputs"]["planner"]["status"] == "degraded"
 
 
 def test_planner_passes_agent_prompts(llm):
-    plan = nodes.planner_node(dict(STATE))["plan"]
+    plan = nodes.planner_node(state())["plan"]
     assert plan["agent_prompts"]["researcher"] == "solar panel household savings"
 
 
-# ---- gatherers (F11–F13)
+# ---- gatherers (F11-F13)
 
 
 def test_researcher_uses_planner_query_and_maps_findings(search):
-    state = dict(STATE, plan={"agent_prompts": {"researcher": "solar savings"}})
-    out = nodes.research_node(state)
+    out = nodes.research_node(state(plan={"agent_prompts": {"researcher": "solar savings"}}))
     assert [f["url"] for f in out["research_findings"]] == [
         "https://example.org/solar",
         "https://example.org/savings",
     ]
     assert out["agent_outputs"]["researcher"]["status"] == "completed"
+    assert search.queries == ["solar savings"]
+
+
+def test_researcher_falls_back_to_news_when_web_search_is_empty(search):
+    search.text_results = []
+    out = nodes.research_node(state())
+    assert [(f["url"], f["source_type"]) for f in out["research_findings"]] == [
+        ("https://news.example/bill", "news")
+    ]
+
+
+def test_ad_links_are_dropped(search):
+    search.text_results = [
+        *search.text_results,
+        {"title": "Ad", "body": "Buy", "href": "https://www.bing.com/aclick?ld=abc"},
+    ]
+    assert all("aclick" not in r["url"] for r in tools.execute_web_search("solar"))
+
+
+def test_researcher_reports_no_results_honestly(search):
+    search.text_results = []
+    search.news_results = []
+    out = nodes.research_node(state())
+    assert out["research_findings"] == []
+    assert out["agent_outputs"]["researcher"]["status"] == "completed_with_no_results"
 
 
 def test_news_falls_back_to_web_search_when_no_news(search):
@@ -103,27 +142,102 @@ def test_news_falls_back_to_web_search_when_no_news(search):
     assert results and all(r["source_type"] == "news" for r in results)
 
 
-def test_data_analysis_extracts_figures_from_text():
-    res = tools.execute_data_analysis("solar", "Costs fell 40% and saved $500 million by 2025.")
-    assert "40%" in res["content"]
-    assert res["source_type"] == "data"
-
-
-@pytest.mark.xfail(
-    strict=True, reason="B3: empty search results are replaced with fabricated Reuters/Bloomberg items"
-)
 def test_empty_web_search_returns_nothing(search):
+    """B3: empty results were replaced with fabricated Reuters/Bloomberg items."""
     search.text_results = []
     assert tools.execute_web_search("solar panel costs") == []
 
 
-@pytest.mark.xfail(strict=True, reason="B3: data analyst invents statistics when the text has none")
-def test_data_analysis_never_invents_figures():
-    res = tools.execute_data_analysis("solar", "No numbers here.")
-    assert "30% AI task automation" not in res["content"]
+def test_search_can_be_switched_off(search, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "SEARCH_PROVIDER", "off")
+    assert tools.execute_web_search("solar") == [] and tools.execute_news_search("solar") == []
+    assert search.queries == []
 
 
-# ---- keyword extraction / JSON parsing / LLM factory
+def test_data_analyst_keeps_only_figures_found_in_sources(llm, search):
+    """B3 + B9: the analyst invented statistics and never saw any real findings."""
+    out = nodes.data_analyst_node(state(plan={"agent_prompts": {"data_analyst": "solar cost"}}))
+    assert search.queries == ["solar cost statistics"]
+    titles = [f["title"] for f in out["data_findings"]]
+    assert titles == ["Solar cost decline: 40%"]  # the invented 99% is dropped
+    assert out["data_findings"][0]["url"] == "https://example.org/solar"
+    assert out["agent_outputs"]["data_analyst"]["model_used"] == "fake/data_analyst"
+
+
+def test_data_analyst_falls_back_to_plain_extraction(llm, search):
+    llm.replies["data_analyst"] = LLMUnavailable("RATE_LIMITED")
+    out = nodes.data_analyst_node(state())
+    contents = [f["content"] for f in out["data_findings"]]
+    assert contents == ["- 40%", "- $500"]
+    assert out["agent_outputs"]["data_analyst"]["status"] == "degraded"
+
+
+def test_data_analyst_never_invents_figures(llm, search):
+    search.text_results = [{"title": "Words", "body": "No numbers here.", "href": "https://example.org/w"}]
+    llm.replies["data_analyst"] = {"figures": []}
+    out = nodes.data_analyst_node(state())
+    assert out["data_findings"] == []
+    assert out["agent_outputs"]["data_analyst"]["status"] == "completed_with_no_results"
+
+
+def test_extract_figures():
+    text = "Costs fell 40% and saved $500 million; 3 billion people; 12.5 percent; in 2025."
+    assert tools.extract_figures(text) == ["40%", "$500 million", "3 billion", "12.5 percent"]
+
+
+# ---- verifier and writer (F14, F15)
+
+FINDINGS = {
+    "research_findings": [
+        {"title": "A", "content": "a", "url": "https://a", "source_type": "web", "timestamp": None},
+        {"title": "B", "content": "b", "url": "https://b", "source_type": "web", "timestamp": None},
+    ],
+    "news_findings": [
+        {"title": "A again", "content": "a", "url": "https://a", "source_type": "news", "timestamp": None}
+    ],
+}
+
+
+def test_numbered_sources_dedupe_by_url():
+    assert [(s["n"], s["url"]) for s in nodes.numbered_sources(FINDINGS)] == [
+        (1, "https://a"),
+        (2, "https://b"),
+    ]
+
+
+def test_verifier_maps_supporting_sources_to_numbers(llm):
+    llm.replies["verifier"] = {
+        "verified_evidence": [
+            {"claim": "x", "confidence_score": "high", "supporting_sources": ["https://b", 1, "[9]"]}
+        ]
+    }
+    claim = nodes.verifier_node(state(**FINDINGS))["verified_evidence"][0]
+    assert claim["supporting_sources"] == [2, 1]
+    assert claim["confidence_score"] is None
+
+
+def test_verifier_outage_marks_claims_unverified(llm):
+    llm.replies["verifier"] = LLMUnavailable("ALL_FAILED")
+    out = nodes.verifier_node(state(**FINDINGS))
+    assert all(not c["is_verified"] and c["confidence_score"] is None for c in out["verified_evidence"])
+    assert out["agent_outputs"]["verifier"]["status"] == "degraded"
+
+
+def test_verifier_skips_the_model_without_sources(llm):
+    out = nodes.verifier_node(state())
+    assert out["verified_evidence"] == [] and "verifier" not in llm.calls
+
+
+def test_writer_gets_numbered_sources_with_urls(llm):
+    """B21: the writer had no URLs, so its references were invented."""
+    nodes.writer_node(state(**FINDINGS))
+    prompt = llm.messages["writer"][0][1].content
+    assert "[1] A, https://a" in prompt and "[2] B, https://b" in prompt
+
+
+# ---- keyword extraction / JSON parsing
 
 
 def test_short_queries_are_unchanged():
@@ -145,21 +259,17 @@ def test_long_queries_are_shortened():
         ('```json\n{"a": 1}\n```', {"a": 1}),
         ('```\n{"a": 1}\n```', {"a": 1}),
         ([{"type": "text", "text": '{"a": 1}'}], {"a": 1}),
+        ('Sure! Here it is: {"a": 1} Hope that helps.', {"a": 1}),
+        ("[1, 2]", {}),
         ("nonsense", {}),
     ],
 )
 def test_parse_json_from_llm(raw, expected):
-    assert nodes.parse_json_from_llm(raw) == expected
+    assert parse_json_from_llm(raw) == expected
 
 
 def test_extract_text_handles_content_blocks():
-    assert nodes.extract_text(["a", {"text": "b"}, {"image": "x"}]) == "a\nb"
-
-
-def test_mock_llm_used_without_api_key():
-    from app.agent.llm import LLMFactory, MockFallbackLLM
-
-    assert isinstance(LLMFactory.get_model("openrouter/free"), MockFallbackLLM)
+    assert extract_text(["a", {"text": "b"}, {"image": "x"}]) == "a\nb"
 
 
 # ---- SSE manager (F3)
@@ -170,19 +280,29 @@ def test_sse_broadcast_reaches_subscribers():
         mgr = SSEManager()
         q = mgr.subscribe("r1")
         await mgr.broadcast("r1", "planner_completed", {"x": 1})
-        msg = await q.get()
-        mgr.unsubscribe("r1", q)
-        return msg
+        return await q.get()
 
     assert '"event": "planner_completed"' in asyncio.run(scenario())
 
 
-@pytest.mark.xfail(strict=True, reason="B5: events sent before a client subscribes are lost (no replay)")
 def test_sse_replays_events_to_late_subscribers():
+    """B5"""
+
     async def scenario():
         mgr = SSEManager()
         await mgr.broadcast("r1", "research_started", {})
-        q = mgr.subscribe("r1")
-        return q.qsize()
+        return mgr.subscribe("r1").qsize()
 
     assert asyncio.run(scenario()) == 1
+
+
+def test_sse_history_is_bounded():
+    from app.services import sse_manager as module
+
+    async def scenario():
+        mgr = SSEManager()
+        for i in range(module.MAX_RUNS_KEPT + 5):
+            await mgr.broadcast(f"r{i}", "research_started", {})
+        return mgr.has_history("r0"), mgr.has_history(f"r{module.MAX_RUNS_KEPT + 4}")
+
+    assert asyncio.run(scenario()) == (False, True)

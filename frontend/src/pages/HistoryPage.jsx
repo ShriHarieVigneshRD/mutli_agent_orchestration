@@ -20,7 +20,7 @@ export default function HistoryPage() {
     setLoading(true);
     try {
       const data = await getResearchHistory();
-      setHistory(data);
+      setHistory(data.runs);
     } catch (err) {
       console.error('Failed to fetch history:', err);
     } finally {

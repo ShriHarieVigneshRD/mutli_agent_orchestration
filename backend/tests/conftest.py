@@ -8,6 +8,7 @@ import json
 import os
 import pathlib
 import tempfile
+import threading
 
 import pytest
 
@@ -17,18 +18,24 @@ os.environ.update(
         "DATABASE_URL": f"sqlite+aiosqlite:///{(_TMP / 'test.db').as_posix()}",
         "OPENROUTER_API_KEY": "",
         "TAVILY_API_KEY": "",
-        "DEFAULT_MODEL": "openrouter/free",
+        "SEARCH_PROVIDER": "auto",
+        "DEFAULT_MODEL": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "MAX_REVISIONS": "1",
+        "RESEARCH_RATE_LIMIT_PER_HOUR": "100000",
+        "CHAT_RATE_LIMIT_PER_MIN": "100000",
+        "MAX_CONCURRENT_RUNS": "100",
+        "CORS_ORIGINS": "http://localhost:5173",
     }
 )
 
-import duckduckgo_search  # noqa: E402
 import langchain_openai  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from langchain_core.messages import AIMessage  # noqa: E402
 
-from app.agent import nodes  # noqa: E402
+from app.agent import llm as llm_module  # noqa: E402
+from app.agent import tools  # noqa: E402
+from app.api import deps  # noqa: E402
 from app.main import app  # noqa: E402
-from app.services import chat_service  # noqa: E402
+from app.services import research_service  # noqa: E402
 
 
 def _offline(*_args, **_kwargs):
@@ -37,16 +44,7 @@ def _offline(*_args, **_kwargs):
 
 # Patched at import time so nothing can reach OpenRouter or DuckDuckGo by accident.
 langchain_openai.ChatOpenAI.invoke = _offline
-duckduckgo_search.DDGS = _offline
-
-# Which agent a prompt belongs to, recognised from its system prompt.
-_AGENT_MARKERS = {
-    "Planner": "planner",
-    "Verifier": "verifier",
-    "Research Writer": "writer",
-    "Critic": "critic",
-    "Research Assistant": "chat",
-}
+tools.DDGS = _offline
 
 DEFAULT_REPLIES = {
     "planner": {
@@ -56,8 +54,14 @@ DEFAULT_REPLIES = {
         "agent_prompts": {
             "researcher": "solar panel household savings",
             "news_agent": "solar panel news",
-            "data_analyst": "solar panel cost statistics",
+            "data_analyst": "solar panel cost",
         },
+    },
+    "data_analyst": {
+        "figures": [
+            {"metric": "Solar cost decline", "value": "40%", "source": 1, "context": "Since 2020."},
+            {"metric": "Invented", "value": "99%", "source": 1, "context": "Not in the text."},
+        ]
     },
     "verifier": {
         "verified_evidence": [
@@ -66,7 +70,7 @@ DEFAULT_REPLIES = {
                 "is_verified": True,
                 "confidence_score": 0.9,
                 "reasoning": "Stated by source 1",
-                "supporting_sources": ["https://example.org/solar"],
+                "supporting_sources": [1],
             }
         ],
         "unsupported_claims": ["Solar is free"],
@@ -82,39 +86,39 @@ DEFAULT_REPLIES = {
 
 
 class FakeLLM:
-    """Scripted replies per agent. A list value is consumed in order; the last item repeats."""
+    """Scripted replies per agent. A list value is consumed in order (last item repeats); an
+    exception value is raised."""
 
     def __init__(self):
         self.replies = dict(DEFAULT_REPLIES)
         self.calls: list[str] = []
+        self.messages: dict[str, list] = {}
+        self.threads: dict[str, str] = {}
 
-    def reply_for(self, agent: str):
+    def invoke(self, agent, messages, model_setting=None, temperature=0.2, offline=None):
+        self.calls.append(agent)
+        self.messages.setdefault(agent, []).append(messages)
+        self.threads[agent] = threading.current_thread().name
         value = self.replies[agent]
         if isinstance(value, list):
-            n = sum(1 for c in self.calls if c == agent) - 1
-            value = value[min(n, len(value) - 1)]
+            value = value[min(self.calls.count(agent) - 1, len(value) - 1)]
         if isinstance(value, Exception):
             raise value
-        return value if isinstance(value, str) else json.dumps(value)
-
-    def invoke_legacy(self, provider, messages, temperature=0.2):
-        system = messages[0].content
-        agent = next(name for marker, name in _AGENT_MARKERS.items() if marker in system)
-        self.calls.append(agent)
-        return AIMessage(content=self.reply_for(agent))
+        text = value if isinstance(value, str) else json.dumps(value)
+        return llm_module.LLMReply(text, f"fake/{agent}")
 
 
 @pytest.fixture
 def llm(monkeypatch):
     fake = FakeLLM()
-    monkeypatch.setattr(nodes, "invoke_llm_with_fallback", fake.invoke_legacy)
-    monkeypatch.setattr(chat_service, "invoke_llm_with_fallback", fake.invoke_legacy)
+    monkeypatch.setattr(llm_module, "invoke", fake.invoke)
     return fake
 
 
 class FakeDDGS:
     text_results: list[dict] = []
     news_results: list[dict] = []
+    queries: list[str] = []
 
     def __enter__(self):
         return self
@@ -123,9 +127,11 @@ class FakeDDGS:
         return False
 
     def text(self, query, max_results=5):
+        self.queries.append(query)
         return self.text_results[:max_results]
 
     def news(self, query, max_results=5):
+        self.queries.append(query)
         return self.news_results[:max_results]
 
 
@@ -154,9 +160,17 @@ def search(monkeypatch):
     class Search(FakeDDGS):
         text_results = list(DEFAULT_WEB)
         news_results = list(DEFAULT_NEWS)
+        queries: list[str] = []
 
-    monkeypatch.setattr(duckduckgo_search, "DDGS", Search)
+    monkeypatch.setattr(tools, "DDGS", Search)
     return Search
+
+
+@pytest.fixture(autouse=True)
+def fresh_limits():
+    deps.research_limiter.reset()
+    deps.chat_limiter.reset()
+    research_service.active_runs.clear()
 
 
 @pytest.fixture(scope="session")

@@ -13,20 +13,14 @@ from app.agent.nodes import (
 )
 from app.agent.state import ResearchState
 
-logger = logging.getLogger("LangGraphWorkflow")
+logger = logging.getLogger(__name__)
 
 
 def route_after_critic(state: ResearchState) -> str:
-    """Conditional routing function based on Critic decision and revision count."""
-    decision = state.get("critic_decision", "APPROVE")
-    revision_count = state.get("revision_count", 0)
-    max_revisions = state.get("max_revisions", 2)
-
-    if decision == "REVISE" and revision_count < max_revisions:
-        logger.info(f"Routing back to 'writer' node for revision #{revision_count}")
+    """Back to the writer only when the critic asked for a revision (it already enforces the limit)."""
+    if state.get("critic_decision") == "REVISE":
+        logger.info("Critic requested revision #%s", state.get("revision_count"))
         return "writer"
-
-    logger.info("Critic decision approved or max revisions reached. Finalizing report workflow.")
     return END
 
 

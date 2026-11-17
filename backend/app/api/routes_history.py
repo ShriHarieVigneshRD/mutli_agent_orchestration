@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.serializers import report_to_dict, run_summary
@@ -15,13 +15,21 @@ async def get_research_history(
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(ResearchRun).order_by(desc(ResearchRun.created_at)).limit(limit).offset(offset)
-    runs = (await db.execute(stmt)).scalars().all()
-    result = []
-    for r in runs:
-        rep = (await db.execute(select(Report).where(Report.run_id == r.id))).scalar_one_or_none()
-        result.append(run_summary(r, rep))
-    return result
+    stmt = (
+        select(ResearchRun, Report)
+        .outerjoin(Report, Report.run_id == ResearchRun.id)
+        .order_by(desc(ResearchRun.created_at))
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await db.execute(stmt)).all()
+    total = (await db.execute(select(func.count()).select_from(ResearchRun))).scalar_one()
+    return {
+        "runs": [run_summary(run, report) for run, report in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/reports/{report_id}")

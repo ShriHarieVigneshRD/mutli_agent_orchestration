@@ -23,9 +23,9 @@ class FindingItem(TypedDict):
 class VerifiedClaim(TypedDict):
     claim: str
     is_verified: bool
-    confidence_score: float
+    confidence_score: float | None  # None when no model checked the claim
     reasoning: str
-    supporting_sources: list[str]
+    supporting_sources: list[int]  # citation numbers [n] of numbered_sources()
 
 
 class ResearchPlanDict(TypedDict):
