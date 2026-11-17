@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from collections import OrderedDict
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,8 @@ class SSEManager:
         return run_id in self._history
 
     async def broadcast(self, run_id: str, event_type: str, data: dict) -> None:
-        payload = json.dumps({"event": event_type, "run_id": run_id, "data": data})
+        at = datetime.now(UTC).isoformat().replace("+00:00", "Z")  # replayed events keep their real time
+        payload = json.dumps({"event": event_type, "run_id": run_id, "data": data, "at": at})
         self._history.setdefault(run_id, []).append(payload)
         self._history.move_to_end(run_id)
         while len(self._history) > MAX_RUNS_KEPT:

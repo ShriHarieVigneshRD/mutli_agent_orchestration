@@ -4,7 +4,7 @@ from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -13,9 +13,23 @@ from app.api.deps import limit_chat, limit_research
 from app.api.serializers import run_detail
 from app.config import settings
 from app.db.database import AsyncSessionLocal, get_db
-from app.db.models import AgentRunLog, Report, ResearchPlan, ResearchRun, Source
+from app.db.models import (
+    AgentRunLog,
+    ChatMessage,
+    Report,
+    ReportVersion,
+    ResearchPlan,
+    ResearchRun,
+    Source,
+)
 from app.services import research_service
-from app.services.chat_service import RunNotFound, get_chat_history, process_followup_chat
+from app.services.chat_service import (
+    RunNotFound,
+    count_versions,
+    get_chat_history,
+    process_followup_chat,
+    revert_report,
+)
 from app.services.sse_manager import is_terminal, sse_manager
 
 logger = logging.getLogger(__name__)
@@ -95,7 +109,34 @@ async def get_research_run(run_id: str, db: AsyncSession = Depends(get_db)):
     report = (await db.execute(select(Report).where(Report.run_id == run_id))).scalar_one_or_none()
     logs_stmt = select(AgentRunLog).where(AgentRunLog.run_id == run_id).order_by(AgentRunLog.timestamp.asc())
     logs = (await db.execute(logs_stmt)).scalars().all()
-    return run_detail(run, plan, list(sources), list(logs), report)
+    return run_detail(run, plan, list(sources), list(logs), report, await count_versions(db, run_id))
+
+
+@router.delete("/{run_id}", status_code=204)
+async def delete_research_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await db.get(ResearchRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Research run not found")
+    if run_id in research_service.active_runs or run.status in ("pending", "running"):
+        raise HTTPException(
+            status_code=409, detail="This run is still in progress. Delete it once it has finished."
+        )
+    # Bulk deletes: ORM cascades would lazy-load each relationship, which async sessions cannot do.
+    for model in (ReportVersion, ChatMessage, Report, Source, AgentRunLog, ResearchPlan):
+        await db.execute(delete(model).where(model.run_id == run_id))
+    await db.execute(delete(ResearchRun).where(ResearchRun.id == run_id))
+    await db.commit()
+
+
+@router.post("/{run_id}/report/revert")
+async def revert_report_edit(run_id: str):
+    """Undo the latest chat edit of the report."""
+    try:
+        return await revert_report(run_id)
+    except RunNotFound as e:
+        raise HTTPException(status_code=404, detail="Research run not found") from e
+    except LookupError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
 @router.get("/{run_id}/chat")

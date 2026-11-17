@@ -14,8 +14,9 @@ def iso(dt: datetime | None) -> str | None:
     return dt.replace(tzinfo=UTC).isoformat().replace("+00:00", "Z")
 
 
-def report_to_dict(report: Report) -> dict[str, Any]:
+def report_to_dict(report: Report, version_count: int = 0) -> dict[str, Any]:
     return {
+        "version_count": version_count,
         "id": report.id,
         "run_id": report.run_id,
         "title": report.title,
@@ -67,6 +68,7 @@ def run_detail(
     sources: list[Source],
     logs: list[AgentRunLog],
     report: Report | None,
+    version_count: int = 0,
 ) -> dict[str, Any]:
     return {
         "id": run.id,
@@ -80,5 +82,5 @@ def run_detail(
         "plan": {"tasks": plan.tasks, "agents_required": plan.agents_required} if plan else None,
         "sources": [source_to_dict(s) for s in sources],
         "logs": [log_to_dict(log) for log in logs],
-        "report": report_to_dict(report) if report else None,
+        "report": report_to_dict(report, version_count) if report else None,
     }

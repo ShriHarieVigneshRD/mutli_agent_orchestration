@@ -113,3 +113,17 @@ class ChatMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=get_utc_now, nullable=True)
 
     run = relationship("ResearchRun", back_populates="chat_messages")
+
+
+class ReportVersion(Base):
+    """A report as it was before a chat edit, so the edit can be undone. New table: `create_all`
+    adds it on startup without touching existing tables."""
+
+    __tablename__ = "report_versions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("research_runs.id"), nullable=False, index=True
+    )
+    full_markdown: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_utc_now, nullable=False)
